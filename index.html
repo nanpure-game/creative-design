@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数独 | ナンプレサイト</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #FAFAF6;
+    --paper: #FFFFFF;
+    --ink: #1B1B1F;
+    --line: #D8D6CC;
+    --line-strong: #1B1B1F;
+    --accent: #35507A;
+    --accent-soft: rgba(53,80,122,0.10);
+    --accent-soft-2: rgba(53,80,122,0.18);
+    --muted: #8C8A80;
+    --error: #A5372E;
+    --error-soft: rgba(165,55,46,0.10);
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; padding:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body{
+    display:flex; justify-content:center;
+    padding: 32px 16px 60px;
+    min-height: 100vh;
+  }
+  .wrap{
+    width: 100%;
+    max-width: 520px;
+  }
+  header{
+    text-align:center;
+    margin-bottom: 22px;
+  }
+  .eyebrow{
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  h1{
+    font-family: 'Shippori Mincho', serif;
+    font-weight: 800;
+    font-size: 34px;
+    letter-spacing: 0.12em;
+    margin: 0;
+    color: var(--ink);
+  }
+  .sub{
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: 0.02em;
+  }
+
+  .diff-row{
+    display:flex;
+    gap: 8px;
+    justify-content:center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .pill{
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 13px;
+    padding: 7px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .pill:hover{ border-color: var(--accent); }
+  .pill.active{
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+
+  .status-row{
+    display:flex;
+    justify-content: space-between;
+    align-items:center;
+    margin-bottom: 10px;
+    padding: 0 2px;
+    min-height: 20px;
+  }
+  .status-msg{
+    font-size: 12.5px;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+  }
+  .status-msg.error-msg{ color: var(--error); }
+  .new-game-btn{
+    font-size: 12.5px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    padding: 0;
+  }
+  .new-game-btn:hover{ color: var(--ink); }
+
+  .board-shell{
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1/1;
+    background: var(--paper);
+    border: 2.5px solid var(--line-strong);
+  }
+  .board{
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    grid-template-rows: repeat(9, 1fr);
+    width: 100%;
+    height: 100%;
+  }
+  .cell{
+    display:flex; align-items:center; justify-content:center;
+    position: relative;
+    border: 0.5px solid var(--line);
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(16px, 4.4vw, 24px);
+    font-weight: 500;
+    color: var(--ink);
+    user-select: none;
+    background: var(--paper);
+  }
+  .cell:nth-child(3n){ border-right-width: 0.5px; }
+  .cell.border-right{ border-right: 1.75px solid var(--line-strong); }
+  .cell.border-bottom{ border-bottom: 1.75px solid var(--line-strong); }
+
+  .cell.given{ color: var(--ink); font-weight: 700; }
+  .cell.user-value{ color: var(--accent); font-weight: 500; }
+  .cell.selected{ background: var(--accent-soft-2); }
+  .cell.peer{ background: var(--accent-soft); }
+  .cell.same-number{ background: var(--accent-soft-2); }
+  .cell.conflict{ color: var(--error); background: var(--error-soft); }
+  .cell.hint-flash{ animation: flash 0.9s ease; }
+  @keyframes flash{
+    0%{ background: var(--accent-soft-2); }
+    100%{ background: transparent; }
+  }
+
+  .notes-grid{
+    display:grid;
+    grid-template-columns: repeat(3,1fr);
+    grid-template-rows: repeat(3,1fr);
+    width: 100%; height: 100%;
+    padding: 2px;
+  }
+  .notes-grid span{
+    display:flex; align-items:center; justify-content:center;
+    font-size: clamp(7px, 1.6vw, 9.5px);
+    color: var(--muted);
+    font-family: 'Space Grotesk', sans-serif;
+  }
+  .notes-grid span.active{ color: var(--accent); font-weight: 600; }
+
+  .toolbar{
+    display:flex;
+    gap: 10px;
+    justify-content:center;
+    margin: 16px 0 14px;
+  }
+  .tool-btn{
+    flex:1;
+    max-width: 150px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding: 10px 6px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    border-radius: 12px;
+    cursor:pointer;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 11.5px;
+    color: var(--ink);
+    transition: all .15s ease;
+  }
+  .tool-btn .icon{ font-size: 16px; line-height:1; }
+  .tool-btn:hover{ border-color: var(--accent); }
+  .tool-btn.active{
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .tool-btn:disabled{ opacity: 0.35; cursor: default; }
+
+  .numpad{
+    display:grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  .num-btn{
+    aspect-ratio: 1/1;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    border-radius: 10px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor:pointer;
+    transition: all .12s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  .num-btn:hover{ border-color: var(--accent); color: var(--accent); }
+  .num-btn.erase{
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  .win-overlay{
+    position: fixed; inset: 0;
+    background: rgba(27,27,31,0.55);
+    display:flex; align-items:center; justify-content:center;
+    z-index: 50;
+    opacity: 0; pointer-events:none;
+    transition: opacity .25s ease;
+  }
+  .win-overlay.show{ opacity:1; pointer-events:all; }
+  .win-card{
+    background: var(--paper);
+    padding: 34px 30px;
+    border-radius: 16px;
+    text-align:center;
+    max-width: 320px;
+  }
+  .win-card .eyebrow{ margin-bottom: 10px; }
+  .win-card h2{
+    font-family: 'Shippori Mincho', serif;
+    font-size: 24px;
+    margin: 0 0 8px;
+  }
+  .win-card p{
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 20px;
+    line-height: 1.6;
+  }
+  .win-card button{
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    padding: 10px 26px;
+    border-radius: 999px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .generating{
+    position:absolute; inset:0;
+    background: rgba(250,250,246,0.9);
+    display:flex; align-items:center; justify-content:center;
+    font-size: 13px; color: var(--muted);
+    letter-spacing: 0.05em;
+    z-index: 10;
+    opacity: 0; pointer-events: none;
+    transition: opacity .15s ease;
+  }
+  .generating.show{ opacity:1; pointer-events:all; }
+
+  @media (max-width: 380px){
+    h1{ font-size: 28px; }
+    .tool-btn{ font-size: 10.5px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Sudoku Puzzle</div>
+    <h1>数独</h1>
+    <div class="sub">好きな難易度でナンプレを解きましょう</div>
+  </header>
+
+  <div class="diff-row" id="diffRow">
+    <button class="pill" data-diff="easy">簡単</button>
+    <button class="pill" data-diff="medium">普通</button>
+    <button class="pill" data-diff="hard">難しい</button>
+    <button class="pill" data-diff="expert">上級</button>
+  </div>
+
+  <div class="status-row">
+    <span class="status-msg" id="statusMsg">&nbsp;</span>
+    <button class="new-game-btn" id="newGameBtn">新しいパズル</button>
+  </div>
+
+  <div class="board-shell">
+    <div class="board" id="board"></div>
+    <div class="generating" id="generating">パズルを生成しています…</div>
+  </div>
+
+  <div class="toolbar">
+    <button class="tool-btn" id="notesBtn">
+      <span class="icon">✎</span>
+      <span>メモ</span>
+    </button>
+    <button class="tool-btn" id="hintBtn">
+      <span class="icon">◇</span>
+      <span>ヒント</span>
+    </button>
+    <button class="tool-btn" id="eraseBtn">
+      <span class="icon">×</span>
+      <span>消す</span>
+    </button>
+  </div>
+
+  <div class="numpad" id="numpad"></div>
+</div>
+
+<div class="win-overlay" id="winOverlay">
+  <div class="win-card">
+    <div class="eyebrow">Complete</div>
+    <h2>お見事です</h2>
+    <p>すべてのマスが正しく埋まりました。<br>おめでとうございます。</p>
+    <button id="winNewGame">次のパズルへ</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const DIFF_CLUES = { easy: 38, medium: 32, hard: 27, expert: 24 };
+  let difficulty = 'easy';
+  let solutionBoard = null;
+  let puzzleBoard = null;     // 0 = empty, given cells fixed
+  let givenMask = null;       // boolean 9x9
+  let currentBoard = null;    // user's working board
+  let notesBoard = null;      // array 9x9 of Set
+  let selected = null;        // {r,c}
+  let notesMode = false;
+  let focusNumber = null;     // number currently highlighted (sticky until dismissed)
+  let longPressTimer = null;
+  let longPressTriggered = false;
+  let cellLongPressTimer = null;
+  let cellLongPressTriggered = false;
+  const LONG_PRESS_MS = 350;
+
+  const boardEl = document.getElementById('board');
+  const numpadEl = document.getElementById('numpad');
+  const statusMsg = document.getElementById('statusMsg');
+  const generatingEl = document.getElementById('generating');
+  const notesBtn = document.getElementById('notesBtn');
+  const hintBtn = document.getElementById('hintBtn');
+  const eraseBtn = document.getElementById('eraseBtn');
+  const winOverlay = document.getElementById('winOverlay');
+
+  // ---------- Generation ----------
+  function emptyBoard(){ return Array.from({length:9}, () => Array(9).fill(0)); }
+
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function isValidPlacement(b, r, c, v){
+    for(let i=0;i<9;i++){
+      if(b[r][i]===v) return false;
+      if(b[i][c]===v) return false;
+    }
+    const br = Math.floor(r/3)*3, bc = Math.floor(c/3)*3;
+    for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++) if(b[i][j]===v) return false;
+    return true;
+  }
+
+  function generateSolvedBoard(){
+    const b = emptyBoard();
+    function fill(pos){
+      if(pos===81) return true;
+      const r = Math.floor(pos/9), c = pos%9;
+      const nums = shuffle([1,2,3,4,5,6,7,8,9]);
+      for(const v of nums){
+        if(isValidPlacement(b,r,c,v)){
+          b[r][c]=v;
+          if(fill(pos+1)) return true;
+          b[r][c]=0;
+        }
+      }
+      return false;
+    }
+    fill(0);
+    return b;
+  }
+
+  function countSolutions(board, limit){
+    let count = 0;
+    const b = board.map(row=>row.slice());
+    function solve(){
+      if(count>=limit) return;
+      let best=-1, bestCands=null;
+      for(let i=0;i<81;i++){
+        const r=Math.floor(i/9), c=i%9;
+        if(b[r][c]===0){
+          const cands=[];
+          for(let v=1;v<=9;v++) if(isValidPlacement(b,r,c,v)) cands.push(v);
+          if(cands.length===0) return;
+          if(best===-1 || cands.length<bestCands.length){
+            best=i; bestCands=cands;
+            if(cands.length===1) break;
+          }
+        }
+      }
+      if(best===-1){ count++; return; }
+      const r=Math.floor(best/9), c=best%9;
+      for(const v of bestCands){
+        if(count>=limit) return;
+        b[r][c]=v;
+        solve();
+        b[r][c]=0;
+      }
+    }
+    solve();
+    return count;
+  }
+
+  function generatePuzzle(diff){
+    const solved = generateSolvedBoard();
+    const puzzle = solved.map(row=>row.slice());
+    const target = DIFF_CLUES[diff] ?? 32;
+    const positions = shuffle(Array.from({length:81}, (_,i)=>i));
+    let clues = 81;
+    for(const pos of positions){
+      if(clues<=target) break;
+      const r=Math.floor(pos/9), c=pos%9;
+      if(puzzle[r][c]===0) continue;
+      const backup = puzzle[r][c];
+      puzzle[r][c]=0;
+      const solCount = countSolutions(puzzle,2);
+      if(solCount===1){ clues--; } else { puzzle[r][c]=backup; }
+    }
+    return { puzzle, solution: solved };
+  }
+
+  // ---------- Game state ----------
+  function startNewGame(diff){
+    generatingEl.classList.add('show');
+    setTimeout(()=>{
+      const { puzzle, solution } = generatePuzzle(diff);
+      puzzleBoard = puzzle;
+      solutionBoard = solution;
+      givenMask = puzzle.map(row=>row.map(v=>v!==0));
+      currentBoard = puzzle.map(row=>row.slice());
+      notesBoard = Array.from({length:9},()=>Array.from({length:9},()=>new Set()));
+      selected = null;
+      setStatus('', false);
+      renderBoard();
+      generatingEl.classList.remove('show');
+    }, 30);
+  }
+
+  function setStatus(text, isError){
+    statusMsg.textContent = text || '\u00A0';
+    statusMsg.classList.toggle('error-msg', !!isError);
+  }
+
+  function computeConflicts(){
+    const conflicts = Array.from({length:9},()=>Array(9).fill(false));
+    function markGroup(cells){
+      const seen = {};
+      for(const [r,c] of cells){
+        const v = currentBoard[r][c];
+        if(v===0) continue;
+        if(seen[v] !== undefined){
+          conflicts[r][c] = true;
+          const [pr,pc] = seen[v];
+          conflicts[pr][pc] = true;
+        } else {
+          seen[v] = [r,c];
+        }
+      }
+    }
+    for(let r=0;r<9;r++) markGroup(Array.from({length:9},(_,c)=>[r,c]));
+    for(let c=0;c<9;c++) markGroup(Array.from({length:9},(_,r)=>[r,c]));
+    for(let br=0;br<9;br+=3) for(let bc=0;bc<9;bc+=3){
+      const cells=[];
+      for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++) cells.push([i,j]);
+      markGroup(cells);
+    }
+    return conflicts;
+  }
+
+  function getCandidates(r,c){
+    const cands = [];
+    for(let v=1;v<=9;v++){
+      if(isValidPlacement(currentBoard, r, c, v)) cands.push(v);
+    }
+    return cands;
+  }
+
+  function checkWin(conflicts){
+    for(let r=0;r<9;r++) for(let c=0;c<9;c++){
+      if(currentBoard[r][c]===0) return false;
+      if(conflicts[r][c]) return false;
+    }
+    return true;
+  }
+
+  // ---------- Rendering ----------
+  function renderBoard(){
+    boardEl.innerHTML = '';
+    const conflicts = computeConflicts();
+    const selVal = selected ? currentBoard[selected.r][selected.c] : 0;
+
+    let occurrences = [];
+    if(focusNumber !== null){
+      for(let r=0;r<9;r++) for(let c=0;c<9;c++){
+        if(currentBoard[r][c]===focusNumber) occurrences.push([r,c]);
+      }
+    }
+
+    for(let r=0;r<9;r++){
+      for(let c=0;c<9;c++){
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        if((c+1)%3===0 && c!==8) cell.classList.add('border-right');
+        if((r+1)%3===0 && r!==8) cell.classList.add('border-bottom');
+
+        const v = currentBoard[r][c];
+        const isGiven = givenMask[r][c];
+
+        if(focusNumber !== null){
+          if(v === focusNumber){
+            cell.classList.add('same-number');
+          } else {
+            let isReach = false;
+            for(const [orow, ocol] of occurrences){
+              if(orow===r || ocol===c || (Math.floor(orow/3)===Math.floor(r/3) && Math.floor(ocol/3)===Math.floor(c/3))){
+                isReach = true; break;
+              }
+            }
+            if(isReach) cell.classList.add('peer');
+          }
+        } else if(selected){
+          const sameBox = Math.floor(r/3)===Math.floor(selected.r/3) && Math.floor(c/3)===Math.floor(selected.c/3);
+          if(r===selected.r && c===selected.c){
+            cell.classList.add('selected');
+          } else if(r===selected.r || c===selected.c || sameBox){
+            cell.classList.add('peer');
+          }
+          if(selVal!==0 && v===selVal && !(r===selected.r && c===selected.c)){
+            cell.classList.add('same-number');
+          }
+        }
+        if(conflicts[r][c]) cell.classList.add('conflict');
+
+        if(v!==0){
+          cell.textContent = v;
+          cell.classList.add(isGiven ? 'given' : 'user-value');
+        } else if(notesBoard[r][c].size>0){
+          const grid = document.createElement('div');
+          grid.className = 'notes-grid';
+          for(let n=1;n<=9;n++){
+            const span = document.createElement('span');
+            span.textContent = notesBoard[r][c].has(n) ? n : '';
+            if(notesBoard[r][c].has(n)) span.classList.add('active');
+            grid.appendChild(span);
+          }
+          cell.appendChild(grid);
+        }
+
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        cell.style.touchAction = 'manipulation';
+        cell.addEventListener('pointerdown', () => {
+          cellLongPressTriggered = false;
+          cellLongPressTimer = setTimeout(() => {
+            const val = currentBoard[r][c];
+            if (val !== 0) {
+              cellLongPressTriggered = true;
+              focusNumber = val;
+              renderBoard();
+              setStatus(`${val} の位置と、その行・列・ブロックをハイライト中(数字を短くタップすると元に戻ります)`, false);
+            }
+          }, LONG_PRESS_MS);
+        });
+        cell.addEventListener('pointerup', () => {
+          clearTimeout(cellLongPressTimer);
+          if (!cellLongPressTriggered) {
+            handleShortTap(() => selectCell(r, c));
+          }
+          cellLongPressTriggered = false;
+        });
+        cell.addEventListener('pointerleave', () => {
+          clearTimeout(cellLongPressTimer);
+        });
+        cell.addEventListener('contextmenu', (e) => e.preventDefault());
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  function selectCell(r,c){
+    selected = { r, c };
+    renderBoard();
+  }
+
+  function setValue(v){
+    if(!selected) return;
+    const { r, c } = selected;
+    if(givenMask[r][c]) return;
+
+    if(notesMode){
+      if(v===0){
+        notesBoard[r][c].clear();
+      } else if(notesBoard[r][c].has(v)){
+        notesBoard[r][c].delete(v);
+      } else {
+        notesBoard[r][c].add(v);
+      }
+      renderBoard();
+      return;
+    }
+
+    currentBoard[r][c] = v;
+    if(v!==0) notesBoard[r][c].clear();
+    const conflicts = computeConflicts();
+    renderBoard();
+
+    if(conflicts[r][c]){
+      setStatus('この数字は同じ列・行・ブロックと重複しています', true);
+    } else {
+      setStatus('', false);
+    }
+
+    if(checkWin(conflicts)){
+      setTimeout(()=> winOverlay.classList.add('show'), 250);
+    }
+  }
+
+  function useHint(){
+    if(!selected) return;
+    const { r, c } = selected;
+    if(givenMask[r][c] || currentBoard[r][c]!==0){
+      setStatus('空いているマスを選んでください', true);
+      return;
+    }
+    const cands = getCandidates(r,c);
+    notesBoard[r][c] = new Set(cands);
+    renderBoard();
+    const cellEl = boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+    if(cellEl){
+      cellEl.classList.add('hint-flash');
+      setTimeout(()=>cellEl.classList.remove('hint-flash'), 900);
+    }
+    setStatus(`このマスに入る候補: ${cands.join(', ')}`, false);
+  }
+
+  // ---------- UI wiring ----------
+  document.querySelectorAll('#diffRow .pill').forEach(btn=>{
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#diffRow .pill').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      difficulty = btn.dataset.diff;
+      startNewGame(difficulty);
+    });
+  });
+
+  document.getElementById('newGameBtn').addEventListener('click', ()=> startNewGame(difficulty));
+  document.getElementById('winNewGame').addEventListener('click', ()=>{
+    winOverlay.classList.remove('show');
+    startNewGame(difficulty);
+  });
+
+  notesBtn.addEventListener('click', ()=>{
+    notesMode = !notesMode;
+    notesBtn.classList.toggle('active', notesMode);
+  });
+  hintBtn.addEventListener('click', useHint);
+  eraseBtn.addEventListener('click', ()=>{
+    if(!selected) return;
+    const { r, c } = selected;
+    if(givenMask[r][c]) return;
+    currentBoard[r][c] = 0;
+    notesBoard[r][c].clear();
+    setStatus('', false);
+    renderBoard();
+  });
+
+  function clearFocusNumber(){
+    if(focusNumber !== null){
+      focusNumber = null;
+      renderBoard();
+      setStatus('', false);
+    }
+  }
+
+  function handleShortTap(actionFn){
+    if(focusNumber !== null){
+      clearFocusNumber();
+      return;
+    }
+    actionFn();
+  }
+  for(let n=1;n<=9;n++){
+    const btn = document.createElement('button');
+    btn.className = 'num-btn';
+    btn.textContent = n;
+    btn.style.touchAction = 'manipulation';
+
+    btn.addEventListener('pointerdown', ()=>{
+      longPressTriggered = false;
+      longPressTimer = setTimeout(()=>{
+        longPressTriggered = true;
+        focusNumber = n;
+        renderBoard();
+        setStatus(`${n} の位置と、その行・列・ブロックをハイライト中(数字を短くタップすると元に戻ります)`, false);
+      }, LONG_PRESS_MS);
+    });
+    btn.addEventListener('pointerup', ()=>{
+      clearTimeout(longPressTimer);
+      if(!longPressTriggered){
+        handleShortTap(() => setValue(n));
+      }
+      longPressTriggered = false;
+    });
+    btn.addEventListener('pointerleave', ()=>{
+      clearTimeout(longPressTimer);
+      longPressTriggered = false;
+    });
+    btn.addEventListener('contextmenu', (e)=> e.preventDefault());
+
+    numpadEl.appendChild(btn);
+  }
+  const eraseNumBtn = document.createElement('button');
+  eraseNumBtn.className = 'num-btn erase';
+  eraseNumBtn.textContent = '消去';
+  eraseNumBtn.addEventListener('click', ()=>{
+    if(!selected) return;
+    const { r, c } = selected;
+    if(givenMask[r][c]) return;
+    currentBoard[r][c] = 0;
+    notesBoard[r][c].clear();
+    renderBoard();
+  });
+  numpadEl.appendChild(eraseNumBtn);
+
+  document.addEventListener('keydown', (e)=>{
+    if(!selected) return;
+    const { r, c } = selected;
+    if(e.key>='1' && e.key<='9'){
+      setValue(parseInt(e.key,10));
+    } else if(e.key==='Backspace' || e.key==='Delete' || e.key==='0'){
+      if(!givenMask[r][c]){
+        currentBoard[r][c]=0;
+        notesBoard[r][c].clear();
+        renderBoard();
+      }
+    } else if(e.key==='ArrowUp' && r>0){ selectCell(r-1,c); }
+    else if(e.key==='ArrowDown' && r<8){ selectCell(r+1,c); }
+    else if(e.key==='ArrowLeft' && c>0){ selectCell(r,c-1); }
+    else if(e.key==='ArrowRight' && c<8){ selectCell(r,c+1); }
+  });
+
+  // init
+  document.querySelector('#diffRow .pill[data-diff="easy"]').classList.add('active');
+  startNewGame('easy');
+})();
+</script>
+</body>
+</html>
