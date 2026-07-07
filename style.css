@@ -429,3 +429,44 @@ h1{
   h1{ font-size: 28px; }
   .tool-btn{ font-size: 10.5px; }
 }
+
+/* ---------- Desktop layout: board left, controls right ---------- */
+.game-layout{
+  display: block;
+}
+@media (min-width: 760px){
+  .game-wrap{
+    max-width: 760px;
+  }
+  .game-layout{
+    display: flex;
+    align-items: flex-start;
+    gap: 40px;
+  }
+  .game-layout .board-col{
+    flex: 1 1 440px;
+    max-width: 460px;
+  }
+  .game-layout .side-col{
+    flex: 1 1 260px;
+    max-width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-top: 4px;
+    position: sticky;
+    top: 28px;
+  }
+  .game-layout .toolbar{
+    margin: 0;
+  }
+  .game-layout .tool-btn{
+    max-width: none;
+  }
+  .game-layout .numpad{
+    gap: 10px;
+  }
+  .game-layout .num-btn{
+    font-size: 20px;
+  }
+}

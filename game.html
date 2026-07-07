@@ -3,58 +3,64 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>数独 | ナンプレサイト</title>
+<title>ナンプレ | ナンプレサイト</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="wrap">
+<div class="wrap game-wrap">
   <div class="nav-bar">
     <a class="nav-link" href="index.html">← トップ</a>
     <a class="nav-link" href="how-to-play.html">遊び方</a>
   </div>
 
   <header>
-    <div class="eyebrow">Sudoku Puzzle</div>
-    <h1>数独</h1>
+    <div class="eyebrow">Number Place</div>
+    <h1>ナンプレ</h1>
     <div class="sub">好きな難易度でナンプレを解きましょう</div>
   </header>
 
-  <div class="diff-row" id="diffRow">
-    <button class="pill" data-diff="easy">簡単</button>
-    <button class="pill" data-diff="medium">普通</button>
-    <button class="pill" data-diff="hard">難しい</button>
-    <button class="pill" data-diff="expert">上級</button>
-  </div>
+  <div class="game-layout">
+    <div class="board-col">
+      <div class="diff-row" id="diffRow">
+        <button class="pill" data-diff="easy">簡単</button>
+        <button class="pill" data-diff="medium">普通</button>
+        <button class="pill" data-diff="hard">難しい</button>
+        <button class="pill" data-diff="expert">上級</button>
+      </div>
 
-  <div class="status-row">
-    <span class="status-msg" id="statusMsg">&nbsp;</span>
-    <button class="new-game-btn" id="newGameBtn">新しいパズル</button>
-  </div>
+      <div class="status-row">
+        <span class="status-msg" id="statusMsg">&nbsp;</span>
+        <button class="new-game-btn" id="newGameBtn">新しいパズル</button>
+      </div>
 
-  <div class="board-shell">
-    <div class="board" id="board"></div>
-    <div class="generating" id="generating">パズルを生成しています…</div>
-  </div>
+      <div class="board-shell">
+        <div class="board" id="board"></div>
+        <div class="generating" id="generating">パズルを生成しています…</div>
+      </div>
+    </div>
 
-  <div class="toolbar">
-    <button class="tool-btn" id="notesBtn">
-      <span class="icon">✎</span>
-      <span>メモ</span>
-    </button>
-    <button class="tool-btn" id="hintBtn">
-      <span class="icon">◇</span>
-      <span>ヒント</span>
-    </button>
-    <button class="tool-btn" id="eraseBtn">
-      <span class="icon">×</span>
-      <span>消す</span>
-    </button>
-  </div>
+    <div class="side-col">
+      <div class="toolbar">
+        <button class="tool-btn" id="notesBtn">
+          <span class="icon">✎</span>
+          <span>メモ</span>
+        </button>
+        <button class="tool-btn" id="hintBtn">
+          <span class="icon">◇</span>
+          <span>ヒント</span>
+        </button>
+        <button class="tool-btn" id="eraseBtn">
+          <span class="icon">×</span>
+          <span>消す</span>
+        </button>
+      </div>
 
-  <div class="numpad" id="numpad"></div>
+      <div class="numpad" id="numpad"></div>
+    </div>
+  </div>
 </div>
 
 <div class="win-overlay" id="winOverlay">
@@ -404,6 +410,15 @@
     renderBoard();
   }
 
+  function clearPeerNotes(r, c, v){
+    for(let cc=0; cc<9; cc++){ if(cc!==c) notesBoard[r][cc].delete(v); }
+    for(let rr=0; rr<9; rr++){ if(rr!==r) notesBoard[rr][c].delete(v); }
+    const br = Math.floor(r/3)*3, bc = Math.floor(c/3)*3;
+    for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++){
+      if(i!==r || j!==c) notesBoard[i][j].delete(v);
+    }
+  }
+
   function setValue(v){
     if(!selected) return;
     const { r, c } = selected;
@@ -423,7 +438,10 @@
     }
 
     currentBoard[r][c] = v;
-    if(v!==0) notesBoard[r][c].clear();
+    if(v!==0){
+      notesBoard[r][c].clear();
+      clearPeerNotes(r, c, v);
+    }
     const conflicts = computeConflicts();
     renderBoard();
 
