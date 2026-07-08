@@ -44,6 +44,14 @@
 
     <div class="side-col">
       <div class="toolbar">
+        <button class="tool-btn" id="undoBtn" disabled>
+          <span class="icon">↺</span>
+          <span>戻す</span>
+        </button>
+        <button class="tool-btn" id="redoBtn" disabled>
+          <span class="icon">↻</span>
+          <span>進む</span>
+        </button>
         <button class="tool-btn" id="notesBtn">
           <span class="icon">✎</span>
           <span>メモ</span>
@@ -90,6 +98,11 @@
   let longPressTriggered = false;
   let cellLongPressTimer = null;
   let cellLongPressTriggered = false;
+  let keyDigitTimer = null;
+  let keyDigitTriggered = false;
+  let undoStack = [];
+  let redoStack = [];
+  const MAX_HISTORY = 200;
   const LONG_PRESS_MS = 350;
 
   const boardEl = document.getElementById('board');
@@ -99,6 +112,8 @@
   const notesBtn = document.getElementById('notesBtn');
   const hintBtn = document.getElementById('hintBtn');
   const eraseBtn = document.getElementById('eraseBtn');
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
   const winOverlay = document.getElementById('winOverlay');
 
   // ---------- Generation ----------
@@ -237,6 +252,7 @@
 
       setStatus('', false);
       renderBoard();
+      resetHistory();
       if(data.completed){
         winOverlay.classList.add('show');
       }
@@ -261,6 +277,7 @@
       setStatus('', false);
       renderBoard();
       generatingEl.classList.remove('show');
+      resetHistory();
       saveGame();
     }, 30);
   }
@@ -392,7 +409,8 @@
         cell.addEventListener('pointerup', () => {
           clearTimeout(cellLongPressTimer);
           if (!cellLongPressTriggered) {
-            handleShortTap(() => selectCell(r, c));
+            if (focusNumber !== null) focusNumber = null;
+            selectCell(r, c);
           }
           cellLongPressTriggered = false;
         });
@@ -419,10 +437,69 @@
     }
   }
 
+  // ---------- Undo / Redo ----------
+  function snapshotState(){
+    return {
+      currentBoard: currentBoard.map(row => row.slice()),
+      notesBoard: notesBoard.map(row => row.map(set => new Set(set)))
+    };
+  }
+
+  function restoreState(state){
+    currentBoard = state.currentBoard.map(row => row.slice());
+    notesBoard = state.notesBoard.map(row => row.map(set => new Set(set)));
+  }
+
+  function updateUndoRedoButtons(){
+    undoBtn.disabled = undoStack.length === 0;
+    redoBtn.disabled = redoStack.length === 0;
+  }
+
+  function pushHistory(){
+    undoStack.push(snapshotState());
+    if(undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack = [];
+    updateUndoRedoButtons();
+  }
+
+  function resetHistory(){
+    undoStack = [];
+    redoStack = [];
+    updateUndoRedoButtons();
+  }
+
+  function undo(){
+    if(undoStack.length === 0) return;
+    const current = snapshotState();
+    const prev = undoStack.pop();
+    redoStack.push(current);
+    restoreState(prev);
+    focusNumber = null;
+    renderBoard();
+    setStatus('', false);
+    saveGame();
+    updateUndoRedoButtons();
+  }
+
+  function redo(){
+    if(redoStack.length === 0) return;
+    const current = snapshotState();
+    const next = redoStack.pop();
+    undoStack.push(current);
+    restoreState(next);
+    focusNumber = null;
+    renderBoard();
+    setStatus('', false);
+    saveGame();
+    updateUndoRedoButtons();
+  }
+
   function setValue(v){
     if(!selected) return;
     const { r, c } = selected;
     if(givenMask[r][c]) return;
+
+    pushHistory();
 
     if(notesMode){
       if(v===0){
@@ -469,6 +546,7 @@
       return;
     }
     const cands = getCandidates(r,c);
+    pushHistory();
     notesBoard[r][c] = new Set(cands);
     renderBoard();
     saveGame();
@@ -504,27 +582,13 @@
     if(!selected) return;
     const { r, c } = selected;
     if(givenMask[r][c]) return;
+    pushHistory();
     currentBoard[r][c] = 0;
     notesBoard[r][c].clear();
     setStatus('', false);
     renderBoard();
     saveGame();
   });
-
-  function clearFocusNumber(){
-    if(focusNumber !== null){
-      focusNumber = null;
-      renderBoard();
-    }
-  }
-
-  function handleShortTap(actionFn){
-    if(focusNumber !== null){
-      clearFocusNumber();
-      return;
-    }
-    actionFn();
-  }
 
   for(let n=1;n<=9;n++){
     const btn = document.createElement('button');
@@ -543,7 +607,12 @@
     btn.addEventListener('pointerup', ()=>{
       clearTimeout(longPressTimer);
       if(!longPressTriggered){
-        handleShortTap(() => setValue(n));
+        if(focusNumber !== null){
+          focusNumber = (focusNumber === n) ? null : n;
+          renderBoard();
+        } else {
+          setValue(n);
+        }
       }
       longPressTriggered = false;
     });
@@ -562,6 +631,7 @@
     if(!selected) return;
     const { r, c } = selected;
     if(givenMask[r][c]) return;
+    pushHistory();
     currentBoard[r][c] = 0;
     notesBoard[r][c].clear();
     renderBoard();
@@ -569,13 +639,38 @@
   });
   numpadEl.appendChild(eraseNumBtn);
 
+  undoBtn.addEventListener('click', undo);
+  redoBtn.addEventListener('click', redo);
+
   document.addEventListener('keydown', (e)=>{
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='z'){
+      e.preventDefault();
+      if(e.shiftKey) redo(); else undo();
+      return;
+    }
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='y'){
+      e.preventDefault();
+      redo();
+      return;
+    }
+
+    if(e.key>='1' && e.key<='9'){
+      if(e.repeat) return; // ignore OS key-repeat while held
+      const n = parseInt(e.key,10);
+      keyDigitTriggered = false;
+      keyDigitTimer = setTimeout(()=>{
+        keyDigitTriggered = true;
+        focusNumber = (focusNumber === n) ? null : n;
+        renderBoard();
+      }, LONG_PRESS_MS);
+      return;
+    }
+
     if(!selected) return;
     const { r, c } = selected;
-    if(e.key>='1' && e.key<='9'){
-      setValue(parseInt(e.key,10));
-    } else if(e.key==='Backspace' || e.key==='Delete' || e.key==='0'){
+    if(e.key==='Backspace' || e.key==='Delete' || e.key==='0'){
       if(!givenMask[r][c]){
+        pushHistory();
         currentBoard[r][c]=0;
         notesBoard[r][c].clear();
         renderBoard();
@@ -587,12 +682,29 @@
     else if(e.key==='ArrowRight' && c<8){ selectCell(r,c+1); }
   });
 
+  document.addEventListener('keyup', (e)=>{
+    if(e.key>='1' && e.key<='9'){
+      const n = parseInt(e.key,10);
+      clearTimeout(keyDigitTimer);
+      if(!keyDigitTriggered){
+        if(focusNumber !== null){
+          focusNumber = (focusNumber === n) ? null : n;
+          renderBoard();
+        } else if(selected){
+          setValue(n);
+        }
+      }
+      keyDigitTriggered = false;
+    }
+  });
+
   // init: try to resume a saved game, otherwise start a fresh easy puzzle
   const restored = loadGame();
   if(!restored){
     document.querySelector('#diffRow .pill[data-diff="easy"]').classList.add('active');
     startNewGame('easy');
   }
+  updateUndoRedoButtons();
 })();
 </script>
 </body>
