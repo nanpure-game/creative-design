@@ -60,6 +60,10 @@
           <span class="icon">◇</span>
           <span>ヒント</span>
         </button>
+        <button class="tool-btn" id="checkBtn">
+          <span class="icon">✓</span>
+          <span>チェック</span>
+        </button>
         <button class="tool-btn" id="eraseBtn">
           <span class="icon">×</span>
           <span>消す</span>
@@ -102,6 +106,7 @@
   let keyDigitTriggered = false;
   let undoStack = [];
   let redoStack = [];
+  let mistakeCells = new Set(); // "r,c" keys currently flagged by the 見直す check (not persisted, no counting)
   const MAX_HISTORY = 200;
   const LONG_PRESS_MS = 350;
 
@@ -111,6 +116,7 @@
   const generatingEl = document.getElementById('generating');
   const notesBtn = document.getElementById('notesBtn');
   const hintBtn = document.getElementById('hintBtn');
+  const checkBtn = document.getElementById('checkBtn');
   const eraseBtn = document.getElementById('eraseBtn');
   const undoBtn = document.getElementById('undoBtn');
   const redoBtn = document.getElementById('redoBtn');
@@ -245,6 +251,7 @@
       notesBoard = deserializeNotes(data.notesBoard);
       selected = null;
       focusNumber = null;
+      mistakeCells = new Set();
 
       document.querySelectorAll('#diffRow .pill').forEach(b=>{
         b.classList.toggle('active', b.dataset.diff === difficulty);
@@ -274,6 +281,7 @@
       notesBoard = Array.from({length:9},()=>Array.from({length:9},()=>new Set()));
       selected = null;
       focusNumber = null;
+      mistakeCells = new Set();
       setStatus('', false);
       renderBoard();
       generatingEl.classList.remove('show');
@@ -376,6 +384,15 @@
           }
         }
         if(conflicts[r][c]) cell.classList.add('conflict');
+
+        const mistakeKey = r + ',' + c;
+        if(mistakeCells.has(mistakeKey)){
+          if(v !== 0 && v !== solutionBoard[r][c]){
+            cell.classList.add('mistake');
+          } else {
+            mistakeCells.delete(mistakeKey); // fixed since the last check, stop flagging it
+          }
+        }
 
         if(v!==0){
           cell.textContent = v;
@@ -557,6 +574,28 @@
     }
   }
 
+  // ---------- Mistake check (見直す) ----------
+  // On-demand only: compares filled cells against the solution and marks
+  // ones that don't match. Nothing is counted or saved - it's just a
+  // temporary visual aid, and marks disappear automatically once fixed.
+  function checkMistakes(){
+    const wrong = [];
+    for(let r=0;r<9;r++){
+      for(let c=0;c<9;c++){
+        if(!givenMask[r][c] && currentBoard[r][c]!==0 && currentBoard[r][c]!==solutionBoard[r][c]){
+          wrong.push(r + ',' + c);
+        }
+      }
+    }
+    mistakeCells = new Set(wrong);
+    renderBoard();
+    if(wrong.length === 0){
+      setStatus('今のところ、まちがいは見つかりませんでした', false);
+    } else {
+      setStatus('見直すとよさそうなマスに印をつけました', true);
+    }
+  }
+
   // ---------- UI wiring ----------
   document.querySelectorAll('#diffRow .pill').forEach(btn=>{
     btn.addEventListener('click', () => {
@@ -578,6 +617,7 @@
     notesBtn.classList.toggle('active', notesMode);
   });
   hintBtn.addEventListener('click', useHint);
+  checkBtn.addEventListener('click', checkMistakes);
   eraseBtn.addEventListener('click', ()=>{
     if(!selected) return;
     const { r, c } = selected;
