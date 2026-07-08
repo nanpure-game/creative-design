@@ -35,8 +35,8 @@ a{ color: inherit; }
   display:flex;
   justify-content: space-between;
   align-items:center;
-  margin-bottom: 20px;
-  font-size: 12.5px;
+  margin-bottom: 22px;
+  font-size: 14.5px;
 }
 .nav-link{
   color: var(--muted);
@@ -56,33 +56,33 @@ a{ color: inherit; }
 /* ---------- Header ---------- */
 header{
   text-align:center;
-  margin-bottom: 22px;
+  margin-bottom: 24px;
 }
 .eyebrow{
-  font-size: 11px;
-  letter-spacing: 0.28em;
+  font-size: 12.5px;
+  letter-spacing: 0.26em;
   color: var(--muted);
   text-transform: uppercase;
-  margin-bottom: 6px;
+  margin-bottom: 7px;
 }
 h1{
   font-family: 'Shippori Mincho', serif;
   font-weight: 800;
-  font-size: 34px;
+  font-size: 40px;
   letter-spacing: 0.12em;
   margin: 0;
   color: var(--ink);
 }
 .sub{
-  font-size: 12.5px;
+  font-size: 14.5px;
   color: var(--muted);
-  margin-top: 6px;
+  margin-top: 7px;
   letter-spacing: 0.02em;
 }
 
 /* ---------- Landing page ---------- */
 .lede{
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.9;
   color: var(--ink);
   text-align: center;
@@ -98,9 +98,9 @@ h1{
   display:block;
   text-align:center;
   text-decoration:none;
-  padding: 14px 20px;
+  padding: 15px 20px;
   border-radius: 999px;
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: 0.04em;
   transition: all .15s ease;
 }
@@ -131,20 +131,20 @@ h1{
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 14px 16px;
-  font-size: 12.5px;
+  padding: 15px 17px;
+  font-size: 14.5px;
   line-height: 1.7;
 }
 .feature-list .mark{
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
   color: var(--accent);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14.5px;
   flex-shrink: 0;
 }
 .footer-note{
   text-align:center;
-  font-size: 11.5px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1.8;
 }
@@ -154,50 +154,50 @@ h1{
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 18px 18px 20px;
+  padding: 19px 19px 21px;
   margin-bottom: 14px;
 }
 .help-section h2{
   font-family: 'Shippori Mincho', serif;
-  font-size: 16px;
-  margin: 0 0 8px;
+  font-size: 18px;
+  margin: 0 0 9px;
   display:flex;
   align-items:center;
   gap: 8px;
 }
 .help-section h2 .num{
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
   color: var(--accent);
   border: 1px solid var(--accent-soft-2);
   background: var(--accent-soft);
-  width: 22px; height: 22px;
+  width: 24px; height: 24px;
   border-radius: 50%;
   display:flex; align-items:center; justify-content:center;
   flex-shrink: 0;
 }
 .help-section p{
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.9;
   color: var(--ink);
   margin: 0 0 6px;
 }
 .help-section p:last-child{ margin-bottom: 0; }
 .help-section .note{
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--muted);
 }
 .kbd{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-width: 20px;
-  padding: 1px 6px;
+  min-width: 22px;
+  padding: 1px 7px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--bg);
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
   color: var(--ink);
 }
 
@@ -207,15 +207,15 @@ h1{
   gap: 8px;
   justify-content:center;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 .pill{
   border: 1px solid var(--line);
   background: var(--paper);
   color: var(--ink);
   font-family: 'Zen Kaku Gothic New', sans-serif;
-  font-size: 13px;
-  padding: 7px 16px;
+  font-size: 15px;
+  padding: 8px 18px;
   border-radius: 999px;
   cursor: pointer;
   transition: all .15s ease;
@@ -231,12 +231,12 @@ h1{
   display:flex;
   justify-content: space-between;
   align-items:center;
-  margin-bottom: 10px;
+  margin-bottom: 11px;
   padding: 0 2px;
-  height: 20px;
+  height: 22px;
 }
 .status-msg{
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--accent);
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -247,7 +247,7 @@ h1{
 }
 .status-msg.error-msg{ color: var(--error); }
 .new-game-btn{
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--muted);
   background: none;
   border: none;
@@ -280,12 +280,14 @@ h1{
   position: relative;
   border: 0.5px solid var(--line);
   cursor: pointer;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: clamp(22px, 7vw, 34px);
+  font-family: 'Inter', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(22px, 7vw, 38px);
   font-weight: 600;
   color: var(--ink);
   user-select: none;
   background: var(--paper);
+  overflow: hidden;
 }
 .cell:nth-child(3n){ border-right-width: 0.5px; }
 .cell.border-right{ border-right: 1.75px solid var(--line-strong); }
@@ -305,40 +307,47 @@ h1{
 
 .notes-grid{
   display:grid;
-  grid-template-columns: repeat(3,1fr);
-  grid-template-rows: repeat(3,1fr);
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  grid-template-rows: repeat(3, minmax(0,1fr));
   width: 100%; height: 100%;
-  padding: 2px;
+  padding: 3px;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 .notes-grid span{
   display:flex; align-items:center; justify-content:center;
-  font-size: clamp(9px, 2.3vw, 13px);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  line-height: 1;
+  font-size: clamp(8px, 1.7vw, 11px);
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
-.notes-grid span.active{ color: var(--accent); font-weight: 600; }
+.notes-grid span.active{ color: var(--accent); font-weight: 700; }
 
 .toolbar{
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-  gap: 8px;
-  margin: 16px 0 14px;
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+  gap: 9px;
+  margin: 18px 0 15px;
 }
 .tool-btn{
   flex:1;
   max-width: 150px;
-  display:flex; flex-direction:column; align-items:center; gap:3px;
-  padding: 10px 6px;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding: 11px 6px;
   border: 1px solid var(--line);
   background: var(--paper);
   border-radius: 12px;
   cursor:pointer;
   font-family: 'Zen Kaku Gothic New', sans-serif;
-  font-size: 12.5px;
+  font-size: 13.5px;
   color: var(--ink);
   transition: all .15s ease;
 }
-.tool-btn .icon{ font-size: 19px; line-height:1; }
+.tool-btn .icon{ font-size: 21px; line-height:1; }
 .tool-btn:hover{ border-color: var(--accent); }
 .tool-btn.active{
   background: var(--ink);
@@ -350,15 +359,16 @@ h1{
 .numpad{
   display:grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
+  gap: 9px;
 }
 .num-btn{
   aspect-ratio: 1/1;
   border: 1px solid var(--line);
   background: var(--paper);
   border-radius: 10px;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 24px;
+  font-family: 'Inter', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 26px;
   font-weight: 600;
   color: var(--ink);
   cursor:pointer;
@@ -370,7 +380,7 @@ h1{
 .num-btn:hover{ border-color: var(--accent); color: var(--accent); }
 .num-btn.erase{
   font-family: 'Zen Kaku Gothic New', sans-serif;
-  font-size: 12.5px;
+  font-size: 13.5px;
   color: var(--muted);
 }
 
@@ -393,11 +403,11 @@ h1{
 .win-card .eyebrow{ margin-bottom: 10px; }
 .win-card h2{
   font-family: 'Shippori Mincho', serif;
-  font-size: 24px;
-  margin: 0 0 8px;
+  font-size: 26px;
+  margin: 0 0 9px;
 }
 .win-card p{
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--muted);
   margin: 0 0 20px;
   line-height: 1.6;
@@ -406,10 +416,10 @@ h1{
   background: var(--ink);
   color: var(--paper);
   border: none;
-  padding: 10px 26px;
+  padding: 11px 28px;
   border-radius: 999px;
   font-family: 'Zen Kaku Gothic New', sans-serif;
-  font-size: 13px;
+  font-size: 14.5px;
   cursor: pointer;
 }
 
@@ -417,7 +427,7 @@ h1{
   position:absolute; inset:0;
   background: rgba(250,250,246,0.9);
   display:flex; align-items:center; justify-content:center;
-  font-size: 13px; color: var(--muted);
+  font-size: 14.5px; color: var(--muted);
   letter-spacing: 0.05em;
   z-index: 10;
   opacity: 0; pointer-events: none;
@@ -426,8 +436,8 @@ h1{
 .generating.show{ opacity:1; pointer-events:all; }
 
 @media (max-width: 380px){
-  h1{ font-size: 28px; }
-  .tool-btn{ font-size: 10.5px; }
+  h1{ font-size: 32px; }
+  .tool-btn{ font-size: 11.5px; }
 }
 
 /* ---------- Desktop layout: board left, controls right ---------- */
@@ -436,23 +446,23 @@ h1{
 }
 @media (min-width: 760px){
   .game-wrap{
-    max-width: 760px;
+    max-width: 920px;
   }
   .game-layout{
     display: flex;
     align-items: flex-start;
-    gap: 40px;
+    gap: 48px;
   }
   .game-layout .board-col{
-    flex: 1 1 440px;
-    max-width: 460px;
+    flex: 1 1 560px;
+    max-width: 600px;
   }
   .game-layout .side-col{
-    flex: 1 1 260px;
-    max-width: 280px;
+    flex: 1 1 280px;
+    max-width: 300px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 22px;
     padding-top: 4px;
     position: sticky;
     top: 28px;
@@ -464,9 +474,15 @@ h1{
     max-width: none;
   }
   .game-layout .numpad{
-    gap: 10px;
+    gap: 12px;
   }
   .game-layout .num-btn{
-    font-size: 28px;
+    font-size: 30px;
+  }
+  .game-layout .cell{
+    font-size: clamp(28px, 3.2vw, 42px);
+  }
+  .game-layout .notes-grid span{
+    font-size: clamp(10px, 0.85vw, 13px);
   }
 }
