@@ -847,8 +847,23 @@
     return next;
   }
 
+  // Same idea, but keeps ONLY the given values in the given cells (discards
+  // everything else). This is the correct direction for hidden pairs: the
+  // pair's own two digits stay, and any other stray candidates in those same
+  // cells get discarded - unlike naked pairs/pointing/X-Wing, where the
+  // pair's digits get removed from OTHER cells in the house instead.
+  function withRestricted(cands, cells, values){
+    const next = cands.map(row => row.map(c => c ? c.slice() : null));
+    for(const [r,c] of cells){
+      next[r][c] = next[r][c].filter(v => values.includes(v));
+    }
+    return next;
+  }
+
   function chainToSingle(cands, res){
-    const reduced = withEliminated(cands, res.affected, res.values);
+    const reduced = res.type === 'hidden-pair'
+      ? withRestricted(cands, res.affected, res.values)
+      : withEliminated(cands, res.affected, res.values);
     return findNakedSingle(reduced) || findHiddenSingleBox(reduced) || findHiddenSingleRowCol(reduced);
   }
 
