@@ -33,8 +33,13 @@
 
       <div class="status-row">
         <span class="status-msg" id="statusMsg">&nbsp;</span>
-        <button class="new-game-btn" id="newGameBtn">新しいパズル</button>
+        <div class="status-actions">
+          <button class="new-game-btn" id="resetBtn">はじめから</button>
+          <button class="new-game-btn" id="newGameBtn">新しいパズル</button>
+        </div>
       </div>
+
+      <div class="tech-note" id="techNote"></div>
 
       <div class="board-shell">
         <div class="board" id="board"></div>
@@ -59,6 +64,10 @@
         <button class="tool-btn" id="hintBtn">
           <span class="icon">◇</span>
           <span>ヒント</span>
+        </button>
+        <button class="tool-btn" id="techBtn">
+          <span class="icon">◆</span>
+          <span>テクニック</span>
         </button>
         <button class="tool-btn" id="checkBtn">
           <span class="icon">✓</span>
@@ -107,6 +116,7 @@
   let undoStack = [];
   let redoStack = [];
   let mistakeCells = new Set(); // "r,c" keys currently flagged by the 見直す check (not persisted, no counting)
+  let techHighlight = null; // { key:[[r,c]...], affected:[[r,c]...] } for the current テクニック hint overlay
   const MAX_HISTORY = 200;
   const LONG_PRESS_MS = 350;
 
@@ -116,8 +126,11 @@
   const generatingEl = document.getElementById('generating');
   const notesBtn = document.getElementById('notesBtn');
   const hintBtn = document.getElementById('hintBtn');
+  const techBtn = document.getElementById('techBtn');
   const checkBtn = document.getElementById('checkBtn');
   const eraseBtn = document.getElementById('eraseBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const techNoteEl = document.getElementById('techNote');
   const undoBtn = document.getElementById('undoBtn');
   const redoBtn = document.getElementById('redoBtn');
   const winOverlay = document.getElementById('winOverlay');
@@ -252,6 +265,7 @@
       selected = null;
       focusNumber = null;
       mistakeCells = new Set();
+      techHighlight = null;
 
       document.querySelectorAll('#diffRow .pill').forEach(b=>{
         b.classList.toggle('active', b.dataset.diff === difficulty);
@@ -282,6 +296,7 @@
       selected = null;
       focusNumber = null;
       mistakeCells = new Set();
+      clearTechHint();
       setStatus('', false);
       renderBoard();
       generatingEl.classList.remove('show');
@@ -394,6 +409,11 @@
           }
         }
 
+        if(techHighlight){
+          if(techHighlight.key.some(([kr,kc]) => kr===r && kc===c)) cell.classList.add('tech-key');
+          else if(techHighlight.affected.some(([ar,ac]) => ar===r && ac===c)) cell.classList.add('tech-affected');
+        }
+
         if(v!==0){
           cell.textContent = v;
           cell.classList.add(isGiven ? 'given' : 'user-value');
@@ -492,6 +512,7 @@
     redoStack.push(current);
     restoreState(prev);
     focusNumber = null;
+    clearTechHint();
     renderBoard();
     setStatus('', false);
     saveGame();
@@ -505,6 +526,7 @@
     undoStack.push(current);
     restoreState(next);
     focusNumber = null;
+    clearTechHint();
     renderBoard();
     setStatus('', false);
     saveGame();
@@ -516,6 +538,7 @@
     const { r, c } = selected;
     if(givenMask[r][c]) return;
 
+    clearTechHint();
     pushHistory();
 
     if(notesMode){
@@ -574,6 +597,234 @@
     }
   }
 
+  // ---------- Technique hint (テクニック) ----------
+  // Looks for the next logical step (beyond a simple candidate list) and
+  // highlights the cells involved, without filling in any answer itself.
+  const HOUSES = [];
+  for(let i=0;i<9;i++) HOUSES.push({ type:'row', idx:i });
+  for(let i=0;i<9;i++) HOUSES.push({ type:'col', idx:i });
+  for(let i=0;i<9;i++) HOUSES.push({ type:'box', idx:i });
+  const HOUSE_LABEL = { row:'行', col:'列', box:'ブロック' };
+
+  function houseCells(type, idx){
+    const cells = [];
+    if(type==='row'){ for(let c=0;c<9;c++) cells.push([idx,c]); }
+    else if(type==='col'){ for(let r=0;r<9;r++) cells.push([r,idx]); }
+    else { const br=Math.floor(idx/3)*3, bc=(idx%3)*3; for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++) cells.push([i,j]); }
+    return cells;
+  }
+
+  function computeAllCandidates(){
+    const cands = Array.from({length:9},()=>Array(9).fill(null));
+    for(let r=0;r<9;r++) for(let c=0;c<9;c++){
+      if(currentBoard[r][c]===0) cands[r][c] = getCandidates(r,c);
+    }
+    return cands;
+  }
+
+  function findNakedSingle(cands){
+    for(let r=0;r<9;r++) for(let c=0;c<9;c++){
+      if(currentBoard[r][c]===0 && cands[r][c].length===1){
+        return { type:'naked-single', cells:[[r,c]], affected:[], value: cands[r][c][0] };
+      }
+    }
+    return null;
+  }
+
+  function findHiddenSingle(cands){
+    for(const house of HOUSES){
+      const cells = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0);
+      for(let v=1; v<=9; v++){
+        const spots = cells.filter(([r,c]) => cands[r][c].includes(v));
+        if(spots.length===1 && cands[spots[0][0]][spots[0][1]].length>1){
+          return { type:'hidden-single', house, cells: spots, affected:[], value: v };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findNakedPair(cands){
+    for(const house of HOUSES){
+      const cells = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0 && cands[r][c].length===2);
+      for(let i=0;i<cells.length;i++){
+        for(let j=i+1;j<cells.length;j++){
+          const [r1,c1]=cells[i], [r2,c2]=cells[j];
+          const a=cands[r1][c1], b=cands[r2][c2];
+          if(a[0]===b[0] && a[1]===b[1]){
+            const rest = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0 && !(r===r1&&c===c1) && !(r===r2&&c===c2));
+            const affected = rest.filter(([r,c]) => cands[r][c].includes(a[0]) || cands[r][c].includes(a[1]));
+            if(affected.length>0){
+              return { type:'naked-pair', house, cells:[[r1,c1],[r2,c2]], affected, values:a };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findHiddenPair(cands){
+    for(const house of HOUSES){
+      const cells = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0);
+      const valCells = {};
+      for(let v=1;v<=9;v++) valCells[v] = cells.filter(([r,c])=>cands[r][c].includes(v));
+      for(let v1=1;v1<=9;v1++){
+        if(valCells[v1].length!==2) continue;
+        for(let v2=v1+1;v2<=9;v2++){
+          if(valCells[v2].length!==2) continue;
+          const c1=valCells[v1], c2=valCells[v2];
+          if(c1[0][0]===c2[0][0] && c1[0][1]===c2[0][1] && c1[1][0]===c2[1][0] && c1[1][1]===c2[1][1]){
+            const [r1,cc1]=c1[0], [r2,cc2]=c1[1];
+            const extra1 = cands[r1][cc1].filter(v=>v!==v1&&v!==v2);
+            const extra2 = cands[r2][cc2].filter(v=>v!==v1&&v!==v2);
+            if(extra1.length>0 || extra2.length>0){
+              return { type:'hidden-pair', house, cells:[[r1,cc1],[r2,cc2]], affected:[], values:[v1,v2] };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findPointing(cands){
+    for(let b=0;b<9;b++){
+      const br=Math.floor(b/3)*3, bc=(b%3)*3;
+      for(let v=1;v<=9;v++){
+        const spots=[];
+        for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++){
+          if(currentBoard[i][j]===0 && cands[i][j].includes(v)) spots.push([i,j]);
+        }
+        if(spots.length<2 || spots.length>3) continue;
+        const rows = new Set(spots.map(s=>s[0]));
+        const cols = new Set(spots.map(s=>s[1]));
+        if(rows.size===1){
+          const r = spots[0][0];
+          const affected = [];
+          for(let c=0;c<9;c++){
+            if(Math.floor(c/3)*3===bc) continue;
+            if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
+          }
+          if(affected.length>0) return { type:'pointing', house:{type:'row', idx:r}, cells:spots, affected, values:[v] };
+        }
+        if(cols.size===1){
+          const c = spots[0][1];
+          const affected = [];
+          for(let r=0;r<9;r++){
+            if(Math.floor(r/3)*3===br) continue;
+            if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
+          }
+          if(affected.length>0) return { type:'pointing', house:{type:'col', idx:c}, cells:spots, affected, values:[v] };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findXWing(cands){
+    for(let v=1;v<=9;v++){
+      const rowsWithTwo = [];
+      for(let r=0;r<9;r++){
+        const cols = [];
+        for(let c=0;c<9;c++) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) cols.push(c);
+        if(cols.length===2) rowsWithTwo.push({ r, cols });
+      }
+      for(let i=0;i<rowsWithTwo.length;i++){
+        for(let j=i+1;j<rowsWithTwo.length;j++){
+          const a=rowsWithTwo[i], b=rowsWithTwo[j];
+          if(a.cols[0]===b.cols[0] && a.cols[1]===b.cols[1]){
+            const [c1,c2]=a.cols;
+            const affected=[];
+            for(let r=0;r<9;r++){
+              if(r===a.r || r===b.r) continue;
+              for(const c of [c1,c2]) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
+            }
+            if(affected.length>0){
+              return { type:'xwing', orientation:'row', cells:[[a.r,c1],[a.r,c2],[b.r,c1],[b.r,c2]], affected, values:[v] };
+            }
+          }
+        }
+      }
+      const colsWithTwo = [];
+      for(let c=0;c<9;c++){
+        const rows = [];
+        for(let r=0;r<9;r++) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) rows.push(r);
+        if(rows.length===2) colsWithTwo.push({ c, rows });
+      }
+      for(let i=0;i<colsWithTwo.length;i++){
+        for(let j=i+1;j<colsWithTwo.length;j++){
+          const a=colsWithTwo[i], b=colsWithTwo[j];
+          if(a.rows[0]===b.rows[0] && a.rows[1]===b.rows[1]){
+            const [r1,r2]=a.rows;
+            const affected=[];
+            for(let c=0;c<9;c++){
+              if(c===a.c || c===b.c) continue;
+              for(const r of [r1,r2]) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
+            }
+            if(affected.length>0){
+              return { type:'xwing', orientation:'col', cells:[[r1,a.c],[r2,a.c],[r1,b.c],[r2,b.c]], affected, values:[v] };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findTechniqueHint(){
+    const cands = computeAllCandidates();
+    return findNakedSingle(cands)
+        || findHiddenSingle(cands)
+        || findNakedPair(cands)
+        || findHiddenPair(cands)
+        || findPointing(cands)
+        || findXWing(cands)
+        || null;
+  }
+
+  function describeTechnique(res){
+    const label = res.house ? HOUSE_LABEL[res.house.type] : '';
+    switch(res.type){
+      case 'naked-single':
+        return { title:'ネイキッドシングル', body:`オレンジのマスは、候補がその数字1つしか残っていません。` };
+      case 'hidden-single':
+        return { title:'ヒドゥンシングル', body:`この${label}の中で、${res.value}が入る可能性があるのはオレンジのマスだけです。` };
+      case 'naked-pair':
+        return { title:'ネイキッドペア', body:`オレンジの2マスは候補が ${res.values.join('・')} だけの組で共通しています。同じ${label}内の他のマス(枠線のみのマス)からは、この2つの数字を候補から消せます。` };
+      case 'hidden-pair':
+        return { title:'ヒドゥンペア', body:`この${label}の中で、${res.values.join('・')} が入りうるのはオレンジの2マスだけです。この2マスの他の候補は消せます。` };
+      case 'pointing':
+        return { title:'ポインティングペア', body:`同じブロック内で ${res.values[0]} が入りうるのはオレンジのマス(同じ${label})だけです。この${label}の他のマス(枠線のみ)からは ${res.values[0]} を候補から消せます。` };
+      case 'xwing':
+        return { title:'X-Wing', body:`${res.values[0]} が2つの${res.orientation==='row'?'行':'列'}で同じ2つの${res.orientation==='row'?'列':'行'}にしか入りません。枠線だけのマスからはこの数字を候補から消せます。` };
+    }
+    return { title:'', body:'' };
+  }
+
+  function clearTechHint(){
+    if(techHighlight){
+      techHighlight = null;
+      techNoteEl.classList.remove('show');
+      techNoteEl.innerHTML = '';
+    }
+  }
+
+  function showTechniqueHint(){
+    const res = findTechniqueHint();
+    if(!res){
+      clearTechHint();
+      setStatus('今の状態から見つけられるテクニックはありませんでした', true);
+      return;
+    }
+    techHighlight = { key: res.cells, affected: res.affected };
+    const desc = describeTechnique(res);
+    techNoteEl.innerHTML = `<span class="tech-title">${desc.title}</span>${desc.body}`;
+    techNoteEl.classList.add('show');
+    setStatus('', false);
+    renderBoard();
+  }
+
   // ---------- Mistake check (見直す) ----------
   // On-demand only: compares filled cells against the solution and marks
   // ones that don't match. Nothing is counted or saved - it's just a
@@ -617,11 +868,27 @@
     notesBtn.classList.toggle('active', notesMode);
   });
   hintBtn.addEventListener('click', useHint);
+  techBtn.addEventListener('click', showTechniqueHint);
   checkBtn.addEventListener('click', checkMistakes);
+  resetBtn.addEventListener('click', ()=>{
+    if(!puzzleBoard) return;
+    if(!confirm('最初からやり直しますか？入力した内容とメモは消えます。')) return;
+    pushHistory();
+    currentBoard = puzzleBoard.map(row => row.slice());
+    notesBoard = Array.from({length:9},()=>Array.from({length:9},()=>new Set()));
+    selected = null;
+    focusNumber = null;
+    mistakeCells = new Set();
+    clearTechHint();
+    setStatus('', false);
+    renderBoard();
+    saveGame();
+  });
   eraseBtn.addEventListener('click', ()=>{
     if(!selected) return;
     const { r, c } = selected;
     if(givenMask[r][c]) return;
+    clearTechHint();
     pushHistory();
     currentBoard[r][c] = 0;
     notesBoard[r][c].clear();
