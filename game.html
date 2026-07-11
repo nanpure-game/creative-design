@@ -39,7 +39,10 @@
         </div>
       </div>
 
-      <div class="tech-note" id="techNote"></div>
+      <div class="tech-note" id="techNote">
+        <div class="tech-note-body" id="techNoteBody"></div>
+        <div class="tech-note-actions" id="techNoteActions"></div>
+      </div>
 
       <div class="board-shell">
         <div class="board" id="board"></div>
@@ -67,7 +70,7 @@
         </button>
         <button class="tool-btn" id="techBtn">
           <span class="icon">◆</span>
-          <span>テクニック</span>
+          <span>アシスト</span>
         </button>
         <button class="tool-btn" id="checkBtn">
           <span class="icon">✓</span>
@@ -116,7 +119,7 @@
   let undoStack = [];
   let redoStack = [];
   let mistakeCells = new Set(); // "r,c" keys currently flagged by the 見直す check (not persisted, no counting)
-  let techHighlight = null; // { key:[[r,c]...], affected:[[r,c]...] } for the current テクニック hint overlay
+  let assistState = null; // holds the current アシスト step (placement suggestion or informational technique)
   const MAX_HISTORY = 200;
   const LONG_PRESS_MS = 350;
 
@@ -131,6 +134,8 @@
   const eraseBtn = document.getElementById('eraseBtn');
   const resetBtn = document.getElementById('resetBtn');
   const techNoteEl = document.getElementById('techNote');
+  const techNoteBodyEl = document.getElementById('techNoteBody');
+  const techNoteActionsEl = document.getElementById('techNoteActions');
   const undoBtn = document.getElementById('undoBtn');
   const redoBtn = document.getElementById('redoBtn');
   const winOverlay = document.getElementById('winOverlay');
@@ -265,7 +270,7 @@
       selected = null;
       focusNumber = null;
       mistakeCells = new Set();
-      techHighlight = null;
+      assistState = null;
 
       document.querySelectorAll('#diffRow .pill').forEach(b=>{
         b.classList.toggle('active', b.dataset.diff === difficulty);
@@ -409,14 +414,23 @@
           }
         }
 
-        if(techHighlight){
-          if(techHighlight.key.some(([kr,kc]) => kr===r && kc===c)) cell.classList.add('tech-key');
-          else if(techHighlight.affected.some(([ar,ac]) => ar===r && ac===c)) cell.classList.add('tech-affected');
+        if(assistState){
+          if(assistState.kind === 'placement'){
+            if(assistState.houseCells.some(([hr,hc]) => hr===r && hc===c)) cell.classList.add('assist-house');
+            if(assistState.blockers.some(([br,bc]) => br===r && bc===c)) cell.classList.add('assist-blocker');
+            if(assistState.targetCell[0]===r && assistState.targetCell[1]===c) cell.classList.add('assist-target');
+          } else {
+            if(assistState.keyCells.some(([kr,kc]) => kr===r && kc===c)) cell.classList.add('tech-key');
+            else if(assistState.affected.some(([ar,ac]) => ar===r && ac===c)) cell.classList.add('tech-affected');
+          }
         }
 
         if(v!==0){
           cell.textContent = v;
           cell.classList.add(isGiven ? 'given' : 'user-value');
+        } else if(assistState && assistState.kind==='placement' && assistState.targetCell[0]===r && assistState.targetCell[1]===c){
+          cell.textContent = assistState.value;
+          cell.classList.add('assist-preview');
         } else if(notesBoard[r][c].size>0){
           const grid = document.createElement('div');
           grid.className = 'notes-grid';
@@ -597,9 +611,12 @@
     }
   }
 
-  // ---------- Technique hint (テクニック) ----------
-  // Looks for the next logical step (beyond a simple candidate list) and
-  // highlights the cells involved, without filling in any answer itself.
+  // ---------- Assist (アシスト) ----------
+  // Finds the next logical step. If it resolves a single cell (naked/hidden
+  // single) it shows *why* - circling the existing numbers that block the
+  // other candidates - and offers a preview digit the person can approve or
+  // dismiss. If it's a pattern that only narrows candidates (pair, pointing,
+  // X-Wing) it's shown as information only, with no cell to approve.
   const HOUSES = [];
   for(let i=0;i<9;i++) HOUSES.push({ type:'row', idx:i });
   for(let i=0;i<9;i++) HOUSES.push({ type:'col', idx:i });
@@ -625,19 +642,61 @@
   function findNakedSingle(cands){
     for(let r=0;r<9;r++) for(let c=0;c<9;c++){
       if(currentBoard[r][c]===0 && cands[r][c].length===1){
-        return { type:'naked-single', cells:[[r,c]], affected:[], value: cands[r][c][0] };
+        return { type:'naked-single', targetCell:[r,c], value: cands[r][c][0], blockers:[], houseCells:[] };
       }
     }
     return null;
   }
 
-  function findHiddenSingle(cands){
+  // Hidden single found via cross-hatching a box: the digit only fits one
+  // empty cell in the box because every other empty cell in that box is
+  // blocked by a copy of the digit already sitting in its row or column.
+  function findHiddenSingleBox(cands){
+    for(let b=0;b<9;b++){
+      const boxCells = houseCells('box', b);
+      const emptyCells = boxCells.filter(([r,c]) => currentBoard[r][c]===0);
+      for(let v=1; v<=9; v++){
+        if(boxCells.some(([r,c]) => currentBoard[r][c]===v)) continue; // already placed in this box
+        const candidateCells = emptyCells.filter(([r,c]) => cands[r][c].includes(v));
+        if(candidateCells.length === 1){
+          const target = candidateCells[0];
+          const blockers = [];
+          const seen = new Set();
+          for(const [r,c] of emptyCells){
+            if(r===target[0] && c===target[1]) continue;
+            if(cands[r][c].includes(v)) continue;
+            let found = false;
+            for(let cc=0; cc<9; cc++){
+              if(currentBoard[r][cc]===v){ blockers.push([r,cc]); found = true; break; }
+            }
+            if(!found){
+              for(let rr=0; rr<9; rr++){
+                if(currentBoard[rr][c]===v){ blockers.push([rr,c]); found = true; break; }
+              }
+            }
+          }
+          const uniqBlockers = blockers.filter(([r,c]) => {
+            const k = r+','+c;
+            if(seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          return { type:'hidden-single-box', targetCell: target, value: v, blockers: uniqBlockers, houseCells: boxCells };
+        }
+      }
+    }
+    return null;
+  }
+
+  // Hidden single scoped to a row or column (box-based ones are caught above).
+  function findHiddenSingleRowCol(cands){
     for(const house of HOUSES){
+      if(house.type === 'box') continue;
       const cells = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0);
       for(let v=1; v<=9; v++){
         const spots = cells.filter(([r,c]) => cands[r][c].includes(v));
         if(spots.length===1 && cands[spots[0][0]][spots[0][1]].length>1){
-          return { type:'hidden-single', house, cells: spots, affected:[], value: v };
+          return { type:'hidden-single', targetCell: spots[0], value: v, blockers:[], houseCells: houseCells(house.type, house.idx), house };
         }
       }
     }
@@ -772,10 +831,11 @@
     return null;
   }
 
-  function findTechniqueHint(){
+  function findAssistStep(){
     const cands = computeAllCandidates();
     return findNakedSingle(cands)
-        || findHiddenSingle(cands)
+        || findHiddenSingleBox(cands)
+        || findHiddenSingleRowCol(cands)
         || findNakedPair(cands)
         || findHiddenPair(cands)
         || findPointing(cands)
@@ -787,7 +847,9 @@
     const label = res.house ? HOUSE_LABEL[res.house.type] : '';
     switch(res.type){
       case 'naked-single':
-        return { title:'ネイキッドシングル', body:`オレンジのマスは、候補がその数字1つしか残っていません。` };
+        return { title:'ネイキッドシングル', body:`このマスは、他の数字がすべて入っているため、残る候補は${res.value}だけです。` };
+      case 'hidden-single-box':
+        return { title:'クロスチェック', body:`丸で囲んだ${res.value}が、同じ行・列を通じてこのブロックの他のマスから${res.value}の可能性を消しています。残ったのはオレンジのマスだけです。` };
       case 'hidden-single':
         return { title:'ヒドゥンシングル', body:`この${label}の中で、${res.value}が入る可能性があるのはオレンジのマスだけです。` };
       case 'naked-pair':
@@ -803,23 +865,74 @@
   }
 
   function clearTechHint(){
-    if(techHighlight){
-      techHighlight = null;
+    if(assistState){
+      assistState = null;
       techNoteEl.classList.remove('show');
-      techNoteEl.innerHTML = '';
+      techNoteBodyEl.innerHTML = '';
+      techNoteActionsEl.innerHTML = '';
     }
   }
 
-  function showTechniqueHint(){
-    const res = findTechniqueHint();
+  function approveAssist(){
+    if(!assistState || assistState.kind !== 'placement') return;
+    const [r, c] = assistState.targetCell;
+    const v = assistState.value;
+    clearTechHint();
+    pushHistory();
+    currentBoard[r][c] = v;
+    notesBoard[r][c].clear();
+    clearPeerNotes(r, c, v);
+    selected = { r, c };
+    focusNumber = null;
+    const conflicts = computeConflicts();
+    renderBoard();
+    if(conflicts[r][c]){
+      setStatus('この数字は同じ列・行・ブロックと重複しています', true);
+    } else {
+      setStatus('', false);
+    }
+    saveGame();
+    if(checkWin(conflicts)){
+      setTimeout(()=>{ winOverlay.classList.add('show'); saveGame(); }, 250);
+    }
+  }
+
+  function showAssistStep(){
+    const res = findAssistStep();
     if(!res){
       clearTechHint();
-      setStatus('今の状態から見つけられるテクニックはありませんでした', true);
+      setStatus('今の状態から見つけられるヒントはありませんでした', true);
       return;
     }
-    techHighlight = { key: res.cells, affected: res.affected };
+    const isPlacement = res.targetCell !== undefined;
+    assistState = isPlacement
+      ? { kind:'placement', targetCell: res.targetCell, value: res.value, blockers: res.blockers, houseCells: res.houseCells }
+      : { kind:'info', keyCells: res.cells, affected: res.affected };
+
     const desc = describeTechnique(res);
-    techNoteEl.innerHTML = `<span class="tech-title">${desc.title}</span>${desc.body}`;
+    techNoteBodyEl.innerHTML = `<span class="tech-title">${desc.title}</span>${desc.body}`;
+    techNoteActionsEl.innerHTML = '';
+    if(isPlacement){
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'tech-action-btn';
+      cancelBtn.textContent = '中止する';
+      cancelBtn.addEventListener('click', clearTechHint);
+      const approveBtn = document.createElement('button');
+      approveBtn.type = 'button';
+      approveBtn.className = 'tech-action-btn tech-action-primary';
+      approveBtn.textContent = '承認する';
+      approveBtn.addEventListener('click', approveAssist);
+      techNoteActionsEl.appendChild(cancelBtn);
+      techNoteActionsEl.appendChild(approveBtn);
+    } else {
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'tech-action-btn';
+      closeBtn.textContent = '閉じる';
+      closeBtn.addEventListener('click', clearTechHint);
+      techNoteActionsEl.appendChild(closeBtn);
+    }
     techNoteEl.classList.add('show');
     setStatus('', false);
     renderBoard();
@@ -868,7 +981,7 @@
     notesBtn.classList.toggle('active', notesMode);
   });
   hintBtn.addEventListener('click', useHint);
-  techBtn.addEventListener('click', showTechniqueHint);
+  techBtn.addEventListener('click', showAssistStep);
   checkBtn.addEventListener('click', checkMistakes);
   resetBtn.addEventListener('click', ()=>{
     if(!puzzleBoard) return;
