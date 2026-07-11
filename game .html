@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ナンプレ | ナンプレサイト</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="wrap game-wrap">
+  <div class="nav-bar">
+    <a class="nav-link" href="index.html">← トップ</a>
+    <a class="nav-link" href="how-to-play.html">遊び方</a>
+  </div>
+
+  <header>
+    <div class="eyebrow">Number Place</div>
+    <h1>ナンプレ</h1>
+    <div class="sub">好きな難易度でナンプレを解きましょう</div>
+  </header>
+
+  <div class="game-layout">
+    <div class="board-col">
+      <div class="diff-row" id="diffRow">
+        <button class="pill" data-diff="easy">簡単</button>
+        <button class="pill" data-diff="medium">普通</button>
+        <button class="pill" data-diff="hard">難しい</button>
+        <button class="pill" data-diff="expert">上級</button>
+      </div>
+
+      <div class="status-row">
+        <span class="status-msg" id="statusMsg">&nbsp;</span>
+        <div class="status-actions">
+          <button class="new-game-btn" id="resetBtn">はじめから</button>
+          <button class="new-game-btn" id="newGameBtn">新しいパズル</button>
+        </div>
+      </div>
+
+      <div class="tech-note" id="techNote">
+        <div class="tech-note-body" id="techNoteBody"></div>
+        <div class="tech-note-actions" id="techNoteActions"></div>
+      </div>
+
+      <div class="board-shell">
+        <div class="board" id="board"></div>
+        <div class="generating" id="generating">パズルを生成しています…</div>
+      </div>
+    </div>
+
+    <div class="side-col">
+      <div class="toolbar">
+        <button class="tool-btn" id="undoBtn" disabled>
+          <span class="icon">↺</span>
+          <span>戻す</span>
+        </button>
+        <button class="tool-btn" id="redoBtn" disabled>
+          <span class="icon">↻</span>
+          <span>進む</span>
+        </button>
+        <button class="tool-btn" id="notesBtn">
+          <span class="icon">✎</span>
+          <span>メモ</span>
+        </button>
+        <button class="tool-btn" id="hintBtn">
+          <span class="icon">◇</span>
+          <span>ヒント</span>
+        </button>
+        <button class="tool-btn" id="techBtn">
+          <span class="icon">◆</span>
+          <span>アシスト</span>
+        </button>
+        <button class="tool-btn" id="checkBtn">
+          <span class="icon">✓</span>
+          <span>チェック</span>
+        </button>
+        <button class="tool-btn" id="eraseBtn">
+          <span class="icon">×</span>
+          <span>消す</span>
+        </button>
+      </div>
+
+      <div class="numpad" id="numpad"></div>
+    </div>
+  </div>
+</div>
+
+<div class="win-overlay" id="winOverlay">
+  <div class="win-card">
+    <div class="eyebrow">Complete</div>
+    <h2>お見事です</h2>
+    <p>すべてのマスが正しく埋まりました。<br>おめでとうございます。</p>
+    <button id="winNewGame">次のパズルへ</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const DIFF_CLUES = { easy: 38, medium: 32, hard: 27, expert: 24 };
+  const STORAGE_KEY = 'nampure_save_v1';
+
+  let difficulty = 'easy';
+  let solutionBoard = null;
+  let puzzleBoard = null;     // 0 = empty, given cells fixed
+  let givenMask = null;       // boolean 9x9
+  let currentBoard = null;    // user's working board
+  let notesBoard = null;      // array 9x9 of Set
+  let selected = null;        // {r,c}
+  let notesMode = false;
+  let focusNumber = null;     // number currently highlighted (sticky until dismissed)
+  let longPressTimer = null;
+  let longPressTriggered = false;
+  let cellLongPressTimer = null;
+  let cellLongPressTriggered = false;
+  let keyDigitTimer = null;
+  let keyDigitTriggered = false;
+  let undoStack = [];
+  let redoStack = [];
+  let mistakeCells = new Set(); // "r,c" keys currently flagged by the 見直す check (not persisted, no counting)
+  let assistState = null; // holds the current アシスト step (placement suggestion or informational technique)
+  const MAX_HISTORY = 200;
+  const LONG_PRESS_MS = 350;
+
+  const boardEl = document.getElementById('board');
+  const numpadEl = document.getElementById('numpad');
+  const statusMsg = document.getElementById('statusMsg');
+  const generatingEl = document.getElementById('generating');
+  const notesBtn = document.getElementById('notesBtn');
+  const hintBtn = document.getElementById('hintBtn');
+  const techBtn = document.getElementById('techBtn');
+  const checkBtn = document.getElementById('checkBtn');
+  const eraseBtn = document.getElementById('eraseBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const techNoteEl = document.getElementById('techNote');
+  const techNoteBodyEl = document.getElementById('techNoteBody');
+  const techNoteActionsEl = document.getElementById('techNoteActions');
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
+  const winOverlay = document.getElementById('winOverlay');
+
+  // ---------- Generation ----------
+  function emptyBoard(){ return Array.from({length:9}, () => Array(9).fill(0)); }
+
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function isValidPlacement(b, r, c, v){
+    for(let i=0;i<9;i++){
+      if(b[r][i]===v) return false;
+      if(b[i][c]===v) return false;
+    }
+    const br = Math.floor(r/3)*3, bc = Math.floor(c/3)*3;
+    for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++) if(b[i][j]===v) return false;
+    return true;
+  }
+
+  function generateSolvedBoard(){
+    const b = emptyBoard();
+    function fill(pos){
+      if(pos===81) return true;
+      const r = Math.floor(pos/9), c = pos%9;
+      const nums = shuffle([1,2,3,4,5,6,7,8,9]);
+      for(const v of nums){
+        if(isValidPlacement(b,r,c,v)){
+          b[r][c]=v;
+          if(fill(pos+1)) return true;
+          b[r][c]=0;
+        }
+      }
+      return false;
+    }
+    fill(0);
+    return b;
+  }
+
+  function countSolutions(board, limit){
+    let count = 0;
+    const b = board.map(row=>row.slice());
+    function solve(){
+      if(count>=limit) return;
+      let best=-1, bestCands=null;
+      for(let i=0;i<81;i++){
+        const r=Math.floor(i/9), c=i%9;
+        if(b[r][c]===0){
+          const cands=[];
+          for(let v=1;v<=9;v++) if(isValidPlacement(b,r,c,v)) cands.push(v);
+          if(cands.length===0) return;
+          if(best===-1 || cands.length<bestCands.length){
+            best=i; bestCands=cands;
+            if(cands.length===1) break;
+          }
+        }
+      }
+      if(best===-1){ count++; return; }
+      const r=Math.floor(best/9), c=best%9;
+      for(const v of bestCands){
+        if(count>=limit) return;
+        b[r][c]=v;
+        solve();
+        b[r][c]=0;
+      }
+    }
+    solve();
+    return count;
+  }
+
+  function generatePuzzle(diff){
+    const solved = generateSolvedBoard();
+    const puzzle = solved.map(row=>row.slice());
+    const target = DIFF_CLUES[diff] ?? 32;
+    const positions = shuffle(Array.from({length:81}, (_,i)=>i));
+    let clues = 81;
+    for(const pos of positions){
+      if(clues<=target) break;
+      const r=Math.floor(pos/9), c=pos%9;
+      if(puzzle[r][c]===0) continue;
+      const backup = puzzle[r][c];
+      puzzle[r][c]=0;
+      const solCount = countSolutions(puzzle,2);
+      if(solCount===1){ clues--; } else { puzzle[r][c]=backup; }
+    }
+    return { puzzle, solution: solved };
+  }
+
+  // ---------- Persistence ----------
+  function serializeNotes(nb){
+    return nb.map(row => row.map(set => Array.from(set)));
+  }
+  function deserializeNotes(arr){
+    return arr.map(row => row.map(a => new Set(a)));
+  }
+
+  function saveGame(){
+    try{
+      const data = {
+        difficulty,
+        puzzleBoard,
+        solutionBoard,
+        givenMask,
+        currentBoard,
+        notesBoard: serializeNotes(notesBoard),
+        completed: winOverlay.classList.contains('show')
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }catch(e){
+      // localStorage unavailable (private browsing, storage full, etc.) - fail silently
+    }
+  }
+
+  function loadGame(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return false;
+      const data = JSON.parse(raw);
+      if(!data || !data.puzzleBoard || !data.solutionBoard || !data.currentBoard) return false;
+
+      difficulty = data.difficulty || 'easy';
+      puzzleBoard = data.puzzleBoard;
+      solutionBoard = data.solutionBoard;
+      givenMask = data.givenMask;
+      currentBoard = data.currentBoard;
+      notesBoard = deserializeNotes(data.notesBoard);
+      selected = null;
+      focusNumber = null;
+      mistakeCells = new Set();
+      assistState = null;
+
+      document.querySelectorAll('#diffRow .pill').forEach(b=>{
+        b.classList.toggle('active', b.dataset.diff === difficulty);
+      });
+
+      setStatus('', false);
+      renderBoard();
+      resetHistory();
+      if(data.completed){
+        winOverlay.classList.add('show');
+      }
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  // ---------- Game state ----------
+  function startNewGame(diff){
+    generatingEl.classList.add('show');
+    setTimeout(()=>{
+      const { puzzle, solution } = generatePuzzle(diff);
+      puzzleBoard = puzzle;
+      solutionBoard = solution;
+      givenMask = puzzle.map(row=>row.map(v=>v!==0));
+      currentBoard = puzzle.map(row=>row.slice());
+      notesBoard = Array.from({length:9},()=>Array.from({length:9},()=>new Set()));
+      selected = null;
+      focusNumber = null;
+      mistakeCells = new Set();
+      clearTechHint();
+      setStatus('', false);
+      renderBoard();
+      generatingEl.classList.remove('show');
+      resetHistory();
+      saveGame();
+    }, 30);
+  }
+
+  function setStatus(text, isError){
+    statusMsg.textContent = text || '\u00A0';
+    statusMsg.classList.toggle('error-msg', !!isError);
+  }
+
+  function computeConflicts(){
+    const conflicts = Array.from({length:9},()=>Array(9).fill(false));
+    function markGroup(cells){
+      const seen = {};
+      for(const [r,c] of cells){
+        const v = currentBoard[r][c];
+        if(v===0) continue;
+        if(seen[v] !== undefined){
+          conflicts[r][c] = true;
+          const [pr,pc] = seen[v];
+          conflicts[pr][pc] = true;
+        } else {
+          seen[v] = [r,c];
+        }
+      }
+    }
+    for(let r=0;r<9;r++) markGroup(Array.from({length:9},(_,c)=>[r,c]));
+    for(let c=0;c<9;c++) markGroup(Array.from({length:9},(_,r)=>[r,c]));
+    for(let br=0;br<9;br+=3) for(let bc=0;bc<9;bc+=3){
+      const cells=[];
+      for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++) cells.push([i,j]);
+      markGroup(cells);
+    }
+    return conflicts;
+  }
+
+  function getCandidates(r,c){
+    const cands = [];
+    for(let v=1;v<=9;v++){
+      if(isValidPlacement(currentBoard, r, c, v)) cands.push(v);
+    }
+    return cands;
+  }
+
+  function checkWin(conflicts){
+    for(let r=0;r<9;r++) for(let c=0;c<9;c++){
+      if(currentBoard[r][c]===0) return false;
+      if(conflicts[r][c]) return false;
+    }
+    return true;
+  }
+
+  // ---------- Rendering ----------
+  function renderBoard(){
+    boardEl.innerHTML = '';
+    const conflicts = computeConflicts();
+    const selVal = selected ? currentBoard[selected.r][selected.c] : 0;
+
+    let occurrences = [];
+    if(focusNumber !== null){
+      for(let r=0;r<9;r++) for(let c=0;c<9;c++){
+        if(currentBoard[r][c]===focusNumber) occurrences.push([r,c]);
+      }
+    }
+
+    for(let r=0;r<9;r++){
+      for(let c=0;c<9;c++){
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        if((c+1)%3===0 && c!==8) cell.classList.add('border-right');
+        if((r+1)%3===0 && r!==8) cell.classList.add('border-bottom');
+
+        const v = currentBoard[r][c];
+        const isGiven = givenMask[r][c];
+
+        if(focusNumber !== null){
+          if(v === focusNumber){
+            cell.classList.add('same-number');
+          } else {
+            let isReach = false;
+            for(const [orow, ocol] of occurrences){
+              if(orow===r || ocol===c || (Math.floor(orow/3)===Math.floor(r/3) && Math.floor(ocol/3)===Math.floor(c/3))){
+                isReach = true; break;
+              }
+            }
+            if(isReach) cell.classList.add('peer');
+          }
+        } else if(selected){
+          const sameBox = Math.floor(r/3)===Math.floor(selected.r/3) && Math.floor(c/3)===Math.floor(selected.c/3);
+          if(r===selected.r && c===selected.c){
+            cell.classList.add('selected');
+          } else if(r===selected.r || c===selected.c || sameBox){
+            cell.classList.add('peer');
+          }
+          if(selVal!==0 && v===selVal && !(r===selected.r && c===selected.c)){
+            cell.classList.add('same-number');
+          }
+        }
+        if(conflicts[r][c]) cell.classList.add('conflict');
+
+        const mistakeKey = r + ',' + c;
+        if(mistakeCells.has(mistakeKey)){
+          if(v !== 0 && v !== solutionBoard[r][c]){
+            cell.classList.add('mistake');
+          } else {
+            mistakeCells.delete(mistakeKey); // fixed since the last check, stop flagging it
+          }
+        }
+
+        if(assistState){
+          if(assistState.kind === 'placement'){
+            if(assistState.houseCells.some(([hr,hc]) => hr===r && hc===c)) cell.classList.add('assist-house');
+            if(assistState.blockers.some(([br,bc]) => br===r && bc===c)) cell.classList.add('assist-blocker');
+            if(assistState.targetCell[0]===r && assistState.targetCell[1]===c) cell.classList.add('assist-target');
+          } else {
+            if(assistState.keyCells.some(([kr,kc]) => kr===r && kc===c)) cell.classList.add('tech-key');
+            else if(assistState.affected.some(([ar,ac]) => ar===r && ac===c)) cell.classList.add('tech-affected');
+          }
+        }
+
+        if(v!==0){
+          cell.textContent = v;
+          cell.classList.add(isGiven ? 'given' : 'user-value');
+        } else if(assistState && assistState.kind==='placement' && assistState.targetCell[0]===r && assistState.targetCell[1]===c){
+          cell.textContent = assistState.value;
+          cell.classList.add('assist-preview');
+        } else if(notesBoard[r][c].size>0){
+          const grid = document.createElement('div');
+          grid.className = 'notes-grid';
+          for(let n=1;n<=9;n++){
+            const span = document.createElement('span');
+            span.textContent = notesBoard[r][c].has(n) ? n : '';
+            if(notesBoard[r][c].has(n)) span.classList.add('active');
+            grid.appendChild(span);
+          }
+          cell.appendChild(grid);
+        }
+
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        cell.style.touchAction = 'manipulation';
+        cell.addEventListener('pointerdown', () => {
+          cellLongPressTriggered = false;
+          cellLongPressTimer = setTimeout(() => {
+            const val = currentBoard[r][c];
+            if (val !== 0) {
+              cellLongPressTriggered = true;
+              focusNumber = val;
+              renderBoard();
+            }
+          }, LONG_PRESS_MS);
+        });
+        cell.addEventListener('pointerup', () => {
+          clearTimeout(cellLongPressTimer);
+          if (!cellLongPressTriggered) {
+            if (focusNumber !== null) focusNumber = null;
+            selectCell(r, c);
+          }
+          cellLongPressTriggered = false;
+        });
+        cell.addEventListener('pointerleave', () => {
+          clearTimeout(cellLongPressTimer);
+        });
+        cell.addEventListener('contextmenu', (e) => e.preventDefault());
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  function selectCell(r,c){
+    selected = { r, c };
+    renderBoard();
+  }
+
+  function clearPeerNotes(r, c, v){
+    for(let cc=0; cc<9; cc++){ if(cc!==c) notesBoard[r][cc].delete(v); }
+    for(let rr=0; rr<9; rr++){ if(rr!==r) notesBoard[rr][c].delete(v); }
+    const br = Math.floor(r/3)*3, bc = Math.floor(c/3)*3;
+    for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++){
+      if(i!==r || j!==c) notesBoard[i][j].delete(v);
+    }
+  }
+
+  // ---------- Undo / Redo ----------
+  function snapshotState(){
+    return {
+      currentBoard: currentBoard.map(row => row.slice()),
+      notesBoard: notesBoard.map(row => row.map(set => new Set(set)))
+    };
+  }
+
+  function restoreState(state){
+    currentBoard = state.currentBoard.map(row => row.slice());
+    notesBoard = state.notesBoard.map(row => row.map(set => new Set(set)));
+  }
+
+  function updateUndoRedoButtons(){
+    undoBtn.disabled = undoStack.length === 0;
+    redoBtn.disabled = redoStack.length === 0;
+  }
+
+  function pushHistory(){
+    undoStack.push(snapshotState());
+    if(undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack = [];
+    updateUndoRedoButtons();
+  }
+
+  function resetHistory(){
+    undoStack = [];
+    redoStack = [];
+    updateUndoRedoButtons();
+  }
+
+  function undo(){
+    if(undoStack.length === 0) return;
+    const current = snapshotState();
+    const prev = undoStack.pop();
+    redoStack.push(current);
+    restoreState(prev);
+    focusNumber = null;
+    clearTechHint();
+    renderBoard();
+    setStatus('', false);
+    saveGame();
+    updateUndoRedoButtons();
+  }
+
+  function redo(){
+    if(redoStack.length === 0) return;
+    const current = snapshotState();
+    const next = redoStack.pop();
+    undoStack.push(current);
+    restoreState(next);
+    focusNumber = null;
+    clearTechHint();
+    renderBoard();
+    setStatus('', false);
+    saveGame();
+    updateUndoRedoButtons();
+  }
+
+  function setValue(v){
+    if(!selected) return;
+    const { r, c } = selected;
+    if(givenMask[r][c]) return;
+
+    clearTechHint();
+    pushHistory();
+
+    if(notesMode){
+      if(v===0){
+        notesBoard[r][c].clear();
+      } else if(notesBoard[r][c].has(v)){
+        notesBoard[r][c].delete(v);
+      } else {
+        notesBoard[r][c].add(v);
+      }
+      renderBoard();
+      saveGame();
+      return;
+    }
+
+    currentBoard[r][c] = v;
+    if(v!==0){
+      notesBoard[r][c].clear();
+      clearPeerNotes(r, c, v);
+    }
+    const conflicts = computeConflicts();
+    renderBoard();
+
+    if(conflicts[r][c]){
+      setStatus('この数字は同じ列・行・ブロックと重複しています', true);
+    } else {
+      setStatus('', false);
+    }
+
+    saveGame();
+
+    if(checkWin(conflicts)){
+      setTimeout(()=> {
+        winOverlay.classList.add('show');
+        saveGame();
+      }, 250);
+    }
+  }
+
+  function useHint(){
+    if(!selected) return;
+    const { r, c } = selected;
+    if(givenMask[r][c] || currentBoard[r][c]!==0){
+      setStatus('空いているマスを選んでください', true);
+      return;
+    }
+    const cands = getCandidates(r,c);
+    pushHistory();
+    notesBoard[r][c] = new Set(cands);
+    renderBoard();
+    saveGame();
+    const cellEl = boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+    if(cellEl){
+      cellEl.classList.add('hint-flash');
+      setTimeout(()=>cellEl.classList.remove('hint-flash'), 900);
+    }
+  }
+
+  // ---------- Assist (アシスト) ----------
+  // Finds the next logical step. If it resolves a single cell (naked/hidden
+  // single) it shows *why* - circling the existing numbers that block the
+  // other candidates - and offers a preview digit the person can approve or
+  // dismiss. If it's a pattern that only narrows candidates (pair, pointing,
+  // X-Wing) it's shown as information only, with no cell to approve.
+  const HOUSES = [];
+  for(let i=0;i<9;i++) HOUSES.push({ type:'row', idx:i });
+  for(let i=0;i<9;i++) HOUSES.push({ type:'col', idx:i });
+  for(let i=0;i<9;i++) HOUSES.push({ type:'box', idx:i });
+  const HOUSE_LABEL = { row:'行', col:'列', box:'ブロック' };
+
+  function houseCells(type, idx){
+    const cells = [];
+    if(type==='row'){ for(let c=0;c<9;c++) cells.push([idx,c]); }
+    else if(type==='col'){ for(let r=0;r<9;r++) cells.push([r,idx]); }
+    else { const br=Math.floor(idx/3)*3, bc=(idx%3)*3; for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++) cells.push([i,j]); }
+    return cells;
+  }
+
+  function computeAllCandidates(){
+    const cands = Array.from({length:9},()=>Array(9).fill(null));
+    for(let r=0;r<9;r++) for(let c=0;c<9;c++){
+      if(currentBoard[r][c]===0) cands[r][c] = getCandidates(r,c);
+    }
+    return cands;
+  }
+
+  function findNakedSingle(cands){
+    for(let r=0;r<9;r++) for(let c=0;c<9;c++){
+      if(currentBoard[r][c]===0 && cands[r][c].length===1){
+        return { type:'naked-single', targetCell:[r,c], value: cands[r][c][0], blockers:[], houseCells:[] };
+      }
+    }
+    return null;
+  }
+
+  // Hidden single found via cross-hatching a box: the digit only fits one
+  // empty cell in the box because every other empty cell in that box is
+  // blocked by a copy of the digit already sitting in its row or column.
+  function findHiddenSingleBox(cands){
+    for(let b=0;b<9;b++){
+      const boxCells = houseCells('box', b);
+      const emptyCells = boxCells.filter(([r,c]) => currentBoard[r][c]===0);
+      for(let v=1; v<=9; v++){
+        if(boxCells.some(([r,c]) => currentBoard[r][c]===v)) continue; // already placed in this box
+        const candidateCells = emptyCells.filter(([r,c]) => cands[r][c].includes(v));
+        if(candidateCells.length === 1){
+          const target = candidateCells[0];
+          const blockers = [];
+          const seen = new Set();
+          for(const [r,c] of emptyCells){
+            if(r===target[0] && c===target[1]) continue;
+            if(cands[r][c].includes(v)) continue;
+            let found = false;
+            for(let cc=0; cc<9; cc++){
+              if(currentBoard[r][cc]===v){ blockers.push([r,cc]); found = true; break; }
+            }
+            if(!found){
+              for(let rr=0; rr<9; rr++){
+                if(currentBoard[rr][c]===v){ blockers.push([rr,c]); found = true; break; }
+              }
+            }
+          }
+          const uniqBlockers = blockers.filter(([r,c]) => {
+            const k = r+','+c;
+            if(seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          return { type:'hidden-single-box', targetCell: target, value: v, blockers: uniqBlockers, houseCells: boxCells };
+        }
+      }
+    }
+    return null;
+  }
+
+  // Hidden single scoped to a row or column (box-based ones are caught above).
+  function findHiddenSingleRowCol(cands){
+    for(const house of HOUSES){
+      if(house.type === 'box') continue;
+      const cells = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0);
+      for(let v=1; v<=9; v++){
+        const spots = cells.filter(([r,c]) => cands[r][c].includes(v));
+        if(spots.length===1 && cands[spots[0][0]][spots[0][1]].length>1){
+          return { type:'hidden-single', targetCell: spots[0], value: v, blockers:[], houseCells: houseCells(house.type, house.idx), house };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findNakedPair(cands){
+    for(const house of HOUSES){
+      const cells = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0 && cands[r][c].length===2);
+      for(let i=0;i<cells.length;i++){
+        for(let j=i+1;j<cells.length;j++){
+          const [r1,c1]=cells[i], [r2,c2]=cells[j];
+          const a=cands[r1][c1], b=cands[r2][c2];
+          if(a[0]===b[0] && a[1]===b[1]){
+            const rest = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0 && !(r===r1&&c===c1) && !(r===r2&&c===c2));
+            const affected = rest.filter(([r,c]) => cands[r][c].includes(a[0]) || cands[r][c].includes(a[1]));
+            if(affected.length>0){
+              return { type:'naked-pair', house, cells:[[r1,c1],[r2,c2]], affected, values:a };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findHiddenPair(cands){
+    for(const house of HOUSES){
+      const cells = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0);
+      const valCells = {};
+      for(let v=1;v<=9;v++) valCells[v] = cells.filter(([r,c])=>cands[r][c].includes(v));
+      for(let v1=1;v1<=9;v1++){
+        if(valCells[v1].length!==2) continue;
+        for(let v2=v1+1;v2<=9;v2++){
+          if(valCells[v2].length!==2) continue;
+          const c1=valCells[v1], c2=valCells[v2];
+          if(c1[0][0]===c2[0][0] && c1[0][1]===c2[0][1] && c1[1][0]===c2[1][0] && c1[1][1]===c2[1][1]){
+            const [r1,cc1]=c1[0], [r2,cc2]=c1[1];
+            const extra1 = cands[r1][cc1].filter(v=>v!==v1&&v!==v2);
+            const extra2 = cands[r2][cc2].filter(v=>v!==v1&&v!==v2);
+            if(extra1.length>0 || extra2.length>0){
+              return { type:'hidden-pair', house, cells:[[r1,cc1],[r2,cc2]], affected:[], values:[v1,v2] };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findPointing(cands){
+    for(let b=0;b<9;b++){
+      const br=Math.floor(b/3)*3, bc=(b%3)*3;
+      for(let v=1;v<=9;v++){
+        const spots=[];
+        for(let i=br;i<br+3;i++) for(let j=bc;j<bc+3;j++){
+          if(currentBoard[i][j]===0 && cands[i][j].includes(v)) spots.push([i,j]);
+        }
+        if(spots.length<2 || spots.length>3) continue;
+        const rows = new Set(spots.map(s=>s[0]));
+        const cols = new Set(spots.map(s=>s[1]));
+        if(rows.size===1){
+          const r = spots[0][0];
+          const affected = [];
+          for(let c=0;c<9;c++){
+            if(Math.floor(c/3)*3===bc) continue;
+            if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
+          }
+          if(affected.length>0) return { type:'pointing', house:{type:'row', idx:r}, cells:spots, affected, values:[v] };
+        }
+        if(cols.size===1){
+          const c = spots[0][1];
+          const affected = [];
+          for(let r=0;r<9;r++){
+            if(Math.floor(r/3)*3===br) continue;
+            if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
+          }
+          if(affected.length>0) return { type:'pointing', house:{type:'col', idx:c}, cells:spots, affected, values:[v] };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findXWing(cands){
+    for(let v=1;v<=9;v++){
+      const rowsWithTwo = [];
+      for(let r=0;r<9;r++){
+        const cols = [];
+        for(let c=0;c<9;c++) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) cols.push(c);
+        if(cols.length===2) rowsWithTwo.push({ r, cols });
+      }
+      for(let i=0;i<rowsWithTwo.length;i++){
+        for(let j=i+1;j<rowsWithTwo.length;j++){
+          const a=rowsWithTwo[i], b=rowsWithTwo[j];
+          if(a.cols[0]===b.cols[0] && a.cols[1]===b.cols[1]){
+            const [c1,c2]=a.cols;
+            const affected=[];
+            for(let r=0;r<9;r++){
+              if(r===a.r || r===b.r) continue;
+              for(const c of [c1,c2]) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
+            }
+            if(affected.length>0){
+              return { type:'xwing', orientation:'row', cells:[[a.r,c1],[a.r,c2],[b.r,c1],[b.r,c2]], affected, values:[v] };
+            }
+          }
+        }
+      }
+      const colsWithTwo = [];
+      for(let c=0;c<9;c++){
+        const rows = [];
+        for(let r=0;r<9;r++) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) rows.push(r);
+        if(rows.length===2) colsWithTwo.push({ c, rows });
+      }
+      for(let i=0;i<colsWithTwo.length;i++){
+        for(let j=i+1;j<colsWithTwo.length;j++){
+          const a=colsWithTwo[i], b=colsWithTwo[j];
+          if(a.rows[0]===b.rows[0] && a.rows[1]===b.rows[1]){
+            const [r1,r2]=a.rows;
+            const affected=[];
+            for(let c=0;c<9;c++){
+              if(c===a.c || c===b.c) continue;
+              for(const r of [r1,r2]) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
+            }
+            if(affected.length>0){
+              return { type:'xwing', orientation:'col', cells:[[r1,a.c],[r2,a.c],[r1,b.c],[r2,b.c]], affected, values:[v] };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findAssistStep(){
+    const cands = computeAllCandidates();
+    return findNakedSingle(cands)
+        || findHiddenSingleBox(cands)
+        || findHiddenSingleRowCol(cands)
+        || findNakedPair(cands)
+        || findHiddenPair(cands)
+        || findPointing(cands)
+        || findXWing(cands)
+        || null;
+  }
+
+  function describeTechnique(res){
+    const label = res.house ? HOUSE_LABEL[res.house.type] : '';
+    switch(res.type){
+      case 'naked-single':
+        return { title:'ネイキッドシングル', body:`このマスは、他の数字がすべて入っているため、残る候補は${res.value}だけです。` };
+      case 'hidden-single-box':
+        return { title:'クロスチェック', body:`丸で囲んだ${res.value}が、同じ行・列を通じてこのブロックの他のマスから${res.value}の可能性を消しています。残ったのはオレンジのマスだけです。` };
+      case 'hidden-single':
+        return { title:'ヒドゥンシングル', body:`この${label}の中で、${res.value}が入る可能性があるのはオレンジのマスだけです。` };
+      case 'naked-pair':
+        return { title:'ネイキッドペア', body:`オレンジの2マスは候補が ${res.values.join('・')} だけの組で共通しています。同じ${label}内の他のマス(枠線のみのマス)からは、この2つの数字を候補から消せます。` };
+      case 'hidden-pair':
+        return { title:'ヒドゥンペア', body:`この${label}の中で、${res.values.join('・')} が入りうるのはオレンジの2マスだけです。この2マスの他の候補は消せます。` };
+      case 'pointing':
+        return { title:'ポインティングペア', body:`同じブロック内で ${res.values[0]} が入りうるのはオレンジのマス(同じ${label})だけです。この${label}の他のマス(枠線のみ)からは ${res.values[0]} を候補から消せます。` };
+      case 'xwing':
+        return { title:'X-Wing', body:`${res.values[0]} が2つの${res.orientation==='row'?'行':'列'}で同じ2つの${res.orientation==='row'?'列':'行'}にしか入りません。枠線だけのマスからはこの数字を候補から消せます。` };
+    }
+    return { title:'', body:'' };
+  }
+
+  function clearTechHint(){
+    if(assistState){
+      assistState = null;
+      techNoteEl.classList.remove('show');
+      techNoteBodyEl.innerHTML = '';
+      techNoteActionsEl.innerHTML = '';
+    }
+  }
+
+  function approveAssist(){
+    if(!assistState || assistState.kind !== 'placement') return;
+    const [r, c] = assistState.targetCell;
+    const v = assistState.value;
+    clearTechHint();
+    pushHistory();
+    currentBoard[r][c] = v;
+    notesBoard[r][c].clear();
+    clearPeerNotes(r, c, v);
+    selected = { r, c };
+    focusNumber = null;
+    const conflicts = computeConflicts();
+    renderBoard();
+    if(conflicts[r][c]){
+      setStatus('この数字は同じ列・行・ブロックと重複しています', true);
+    } else {
+      setStatus('', false);
+    }
+    saveGame();
+    if(checkWin(conflicts)){
+      setTimeout(()=>{ winOverlay.classList.add('show'); saveGame(); }, 250);
+    }
+  }
+
+  function showAssistStep(){
+    const res = findAssistStep();
+    if(!res){
+      clearTechHint();
+      setStatus('今の状態から見つけられるヒントはありませんでした', true);
+      return;
+    }
+    const isPlacement = res.targetCell !== undefined;
+    assistState = isPlacement
+      ? { kind:'placement', targetCell: res.targetCell, value: res.value, blockers: res.blockers, houseCells: res.houseCells }
+      : { kind:'info', keyCells: res.cells, affected: res.affected };
+
+    const desc = describeTechnique(res);
+    techNoteBodyEl.innerHTML = `<span class="tech-title">${desc.title}</span>${desc.body}`;
+    techNoteActionsEl.innerHTML = '';
+    if(isPlacement){
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'tech-action-btn';
+      cancelBtn.textContent = '中止する';
+      cancelBtn.addEventListener('click', clearTechHint);
+      const approveBtn = document.createElement('button');
+      approveBtn.type = 'button';
+      approveBtn.className = 'tech-action-btn tech-action-primary';
+      approveBtn.textContent = '承認する';
+      approveBtn.addEventListener('click', approveAssist);
+      techNoteActionsEl.appendChild(cancelBtn);
+      techNoteActionsEl.appendChild(approveBtn);
+    } else {
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'tech-action-btn';
+      closeBtn.textContent = '閉じる';
+      closeBtn.addEventListener('click', clearTechHint);
+      techNoteActionsEl.appendChild(closeBtn);
+    }
+    techNoteEl.classList.add('show');
+    setStatus('', false);
+    renderBoard();
+  }
+
+  // ---------- Mistake check (見直す) ----------
+  // On-demand only: compares filled cells against the solution and marks
+  // ones that don't match. Nothing is counted or saved - it's just a
+  // temporary visual aid, and marks disappear automatically once fixed.
+  function checkMistakes(){
+    const wrong = [];
+    for(let r=0;r<9;r++){
+      for(let c=0;c<9;c++){
+        if(!givenMask[r][c] && currentBoard[r][c]!==0 && currentBoard[r][c]!==solutionBoard[r][c]){
+          wrong.push(r + ',' + c);
+        }
+      }
+    }
+    mistakeCells = new Set(wrong);
+    renderBoard();
+    if(wrong.length === 0){
+      setStatus('今のところ、まちがいは見つかりませんでした', false);
+    } else {
+      setStatus('見直すとよさそうなマスに印をつけました', true);
+    }
+  }
+
+  // ---------- UI wiring ----------
+  document.querySelectorAll('#diffRow .pill').forEach(btn=>{
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#diffRow .pill').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      difficulty = btn.dataset.diff;
+      startNewGame(difficulty);
+    });
+  });
+
+  document.getElementById('newGameBtn').addEventListener('click', ()=> startNewGame(difficulty));
+  document.getElementById('winNewGame').addEventListener('click', ()=>{
+    winOverlay.classList.remove('show');
+    startNewGame(difficulty);
+  });
+
+  notesBtn.addEventListener('click', ()=>{
+    notesMode = !notesMode;
+    notesBtn.classList.toggle('active', notesMode);
+  });
+  hintBtn.addEventListener('click', useHint);
+  techBtn.addEventListener('click', showAssistStep);
+  checkBtn.addEventListener('click', checkMistakes);
+  resetBtn.addEventListener('click', ()=>{
+    if(!puzzleBoard) return;
+    if(!confirm('最初からやり直しますか？入力した内容とメモは消えます。')) return;
+    pushHistory();
+    currentBoard = puzzleBoard.map(row => row.slice());
+    notesBoard = Array.from({length:9},()=>Array.from({length:9},()=>new Set()));
+    selected = null;
+    focusNumber = null;
+    mistakeCells = new Set();
+    clearTechHint();
+    setStatus('', false);
+    renderBoard();
+    saveGame();
+  });
+  eraseBtn.addEventListener('click', ()=>{
+    if(!selected) return;
+    const { r, c } = selected;
+    if(givenMask[r][c]) return;
+    clearTechHint();
+    pushHistory();
+    currentBoard[r][c] = 0;
+    notesBoard[r][c].clear();
+    setStatus('', false);
+    renderBoard();
+    saveGame();
+  });
+
+  for(let n=1;n<=9;n++){
+    const btn = document.createElement('button');
+    btn.className = 'num-btn';
+    btn.textContent = n;
+    btn.style.touchAction = 'manipulation';
+
+    btn.addEventListener('pointerdown', ()=>{
+      longPressTriggered = false;
+      longPressTimer = setTimeout(()=>{
+        longPressTriggered = true;
+        focusNumber = n;
+        renderBoard();
+      }, LONG_PRESS_MS);
+    });
+    btn.addEventListener('pointerup', ()=>{
+      clearTimeout(longPressTimer);
+      if(!longPressTriggered){
+        if(focusNumber !== null){
+          focusNumber = (focusNumber === n) ? null : n;
+          renderBoard();
+        } else {
+          setValue(n);
+        }
+      }
+      longPressTriggered = false;
+    });
+    btn.addEventListener('pointerleave', ()=>{
+      clearTimeout(longPressTimer);
+      longPressTriggered = false;
+    });
+    btn.addEventListener('contextmenu', (e)=> e.preventDefault());
+
+    numpadEl.appendChild(btn);
+  }
+  const eraseNumBtn = document.createElement('button');
+  eraseNumBtn.className = 'num-btn erase';
+  eraseNumBtn.textContent = '消去';
+  eraseNumBtn.addEventListener('click', ()=>{
+    if(!selected) return;
+    const { r, c } = selected;
+    if(givenMask[r][c]) return;
+    pushHistory();
+    currentBoard[r][c] = 0;
+    notesBoard[r][c].clear();
+    renderBoard();
+    saveGame();
+  });
+  numpadEl.appendChild(eraseNumBtn);
+
+  undoBtn.addEventListener('click', undo);
+  redoBtn.addEventListener('click', redo);
+
+  document.addEventListener('keydown', (e)=>{
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='z'){
+      e.preventDefault();
+      if(e.shiftKey) redo(); else undo();
+      return;
+    }
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='y'){
+      e.preventDefault();
+      redo();
+      return;
+    }
+
+    if(e.key>='1' && e.key<='9'){
+      if(e.repeat) return; // ignore OS key-repeat while held
+      const n = parseInt(e.key,10);
+      keyDigitTriggered = false;
+      keyDigitTimer = setTimeout(()=>{
+        keyDigitTriggered = true;
+        focusNumber = (focusNumber === n) ? null : n;
+        renderBoard();
+      }, LONG_PRESS_MS);
+      return;
+    }
+
+    if(!selected) return;
+    const { r, c } = selected;
+    if(e.key==='Backspace' || e.key==='Delete' || e.key==='0'){
+      if(!givenMask[r][c]){
+        pushHistory();
+        currentBoard[r][c]=0;
+        notesBoard[r][c].clear();
+        renderBoard();
+        saveGame();
+      }
+    } else if(e.key==='ArrowUp' && r>0){ selectCell(r-1,c); }
+    else if(e.key==='ArrowDown' && r<8){ selectCell(r+1,c); }
+    else if(e.key==='ArrowLeft' && c>0){ selectCell(r,c-1); }
+    else if(e.key==='ArrowRight' && c<8){ selectCell(r,c+1); }
+  });
+
+  document.addEventListener('keyup', (e)=>{
+    if(e.key>='1' && e.key<='9'){
+      const n = parseInt(e.key,10);
+      clearTimeout(keyDigitTimer);
+      if(!keyDigitTriggered){
+        if(focusNumber !== null){
+          focusNumber = (focusNumber === n) ? null : n;
+          renderBoard();
+        } else if(selected){
+          setValue(n);
+        }
+      }
+      keyDigitTriggered = false;
+    }
+  });
+
+  // init: try to resume a saved game, otherwise start a fresh easy puzzle
+  const restored = loadGame();
+  if(!restored){
+    document.querySelector('#diffRow .pill[data-diff="easy"]').classList.add('active');
+    startNewGame('easy');
+  }
+  updateUndoRedoButtons();
+})();
+</script>
+</body>
+</html>
