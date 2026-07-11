@@ -39,11 +39,6 @@
         </div>
       </div>
 
-      <div class="tech-note" id="techNote">
-        <div class="tech-note-body" id="techNoteBody"></div>
-        <div class="tech-note-actions" id="techNoteActions"></div>
-      </div>
-
       <div class="board-shell">
         <div class="board" id="board"></div>
         <div class="generating" id="generating">パズルを生成しています…</div>
@@ -83,6 +78,11 @@
       </div>
 
       <div class="numpad" id="numpad"></div>
+
+      <div class="tech-note" id="techNote">
+        <div class="tech-note-body" id="techNoteBody"></div>
+        <div class="tech-note-actions" id="techNoteActions"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -417,6 +417,7 @@
         if(assistState){
           if(assistState.kind === 'placement'){
             if(assistState.houseCells.some(([hr,hc]) => hr===r && hc===c)) cell.classList.add('assist-house');
+            if(assistState.keyCells && assistState.keyCells.some(([kr,kc]) => kr===r && kc===c)) cell.classList.add('tech-key');
             if(assistState.blockers.some(([br,bc]) => br===r && bc===c)) cell.classList.add('assist-blocker');
             if(assistState.targetCell[0]===r && assistState.targetCell[1]===c) cell.classList.add('assist-target');
           } else {
@@ -703,7 +704,8 @@
     return null;
   }
 
-  function findNakedPair(cands){
+  function findAllNakedPairs(cands){
+    const results = [];
     for(const house of HOUSES){
       const cells = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0 && cands[r][c].length===2);
       for(let i=0;i<cells.length;i++){
@@ -714,16 +716,17 @@
             const rest = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0 && !(r===r1&&c===c1) && !(r===r2&&c===c2));
             const affected = rest.filter(([r,c]) => cands[r][c].includes(a[0]) || cands[r][c].includes(a[1]));
             if(affected.length>0){
-              return { type:'naked-pair', house, cells:[[r1,c1],[r2,c2]], affected, values:a };
+              results.push({ type:'naked-pair', house, cells:[[r1,c1],[r2,c2]], affected, values:a });
             }
           }
         }
       }
     }
-    return null;
+    return results;
   }
 
-  function findHiddenPair(cands){
+  function findAllHiddenPairs(cands){
+    const results = [];
     for(const house of HOUSES){
       const cells = houseCells(house.type, house.idx).filter(([r,c])=>currentBoard[r][c]===0);
       const valCells = {};
@@ -738,16 +741,17 @@
             const extra1 = cands[r1][cc1].filter(v=>v!==v1&&v!==v2);
             const extra2 = cands[r2][cc2].filter(v=>v!==v1&&v!==v2);
             if(extra1.length>0 || extra2.length>0){
-              return { type:'hidden-pair', house, cells:[[r1,cc1],[r2,cc2]], affected:[], values:[v1,v2] };
+              results.push({ type:'hidden-pair', house, cells:[[r1,cc1],[r2,cc2]], affected:[[r1,cc1],[r2,cc2]], values:[v1,v2] });
             }
           }
         }
       }
     }
-    return null;
+    return results;
   }
 
-  function findPointing(cands){
+  function findAllPointing(cands){
+    const results = [];
     for(let b=0;b<9;b++){
       const br=Math.floor(b/3)*3, bc=(b%3)*3;
       for(let v=1;v<=9;v++){
@@ -765,7 +769,7 @@
             if(Math.floor(c/3)*3===bc) continue;
             if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
           }
-          if(affected.length>0) return { type:'pointing', house:{type:'row', idx:r}, cells:spots, affected, values:[v] };
+          if(affected.length>0) results.push({ type:'pointing', house:{type:'row', idx:r}, cells:spots, affected, values:[v] });
         }
         if(cols.size===1){
           const c = spots[0][1];
@@ -774,14 +778,15 @@
             if(Math.floor(r/3)*3===br) continue;
             if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
           }
-          if(affected.length>0) return { type:'pointing', house:{type:'col', idx:c}, cells:spots, affected, values:[v] };
+          if(affected.length>0) results.push({ type:'pointing', house:{type:'col', idx:c}, cells:spots, affected, values:[v] });
         }
       }
     }
-    return null;
+    return results;
   }
 
-  function findXWing(cands){
+  function findAllXWing(cands){
+    const results = [];
     for(let v=1;v<=9;v++){
       const rowsWithTwo = [];
       for(let r=0;r<9;r++){
@@ -800,7 +805,7 @@
               for(const c of [c1,c2]) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
             }
             if(affected.length>0){
-              return { type:'xwing', orientation:'row', cells:[[a.r,c1],[a.r,c2],[b.r,c1],[b.r,c2]], affected, values:[v] };
+              results.push({ type:'xwing', orientation:'row', cells:[[a.r,c1],[a.r,c2],[b.r,c1],[b.r,c2]], affected, values:[v] });
             }
           }
         }
@@ -822,36 +827,73 @@
               for(const r of [r1,r2]) if(currentBoard[r][c]===0 && cands[r][c].includes(v)) affected.push([r,c]);
             }
             if(affected.length>0){
-              return { type:'xwing', orientation:'col', cells:[[r1,a.c],[r2,a.c],[r1,b.c],[r2,b.c]], affected, values:[v] };
+              results.push({ type:'xwing', orientation:'col', cells:[[r1,a.c],[r2,a.c],[r1,b.c],[r2,b.c]], affected, values:[v] });
             }
           }
         }
       }
     }
-    return null;
+    return results;
+  }
+
+  // Returns a deep-enough copy of the candidate grid with the given values
+  // removed from the given cells, so a chain step can be tested without
+  // touching the real board or the caller's candidate grid.
+  function withEliminated(cands, cells, values){
+    const next = cands.map(row => row.map(c => c ? c.slice() : null));
+    for(const [r,c] of cells){
+      next[r][c] = next[r][c].filter(v => !values.includes(v));
+    }
+    return next;
+  }
+
+  function chainToSingle(cands, res){
+    const reduced = withEliminated(cands, res.affected, res.values);
+    return findNakedSingle(reduced) || findHiddenSingleBox(reduced) || findHiddenSingleRowCol(reduced);
   }
 
   function findAssistStep(){
     const cands = computeAllCandidates();
-    return findNakedSingle(cands)
-        || findHiddenSingleBox(cands)
-        || findHiddenSingleRowCol(cands)
-        || findNakedPair(cands)
-        || findHiddenPair(cands)
-        || findPointing(cands)
-        || findXWing(cands)
-        || null;
+    const direct = findNakedSingle(cands) || findHiddenSingleBox(cands) || findHiddenSingleRowCol(cands);
+    if(direct) return direct;
+
+    // Standard teaching order: pointing pairs/triples are more basic than
+    // naked/hidden pairs, which come before X-Wing. Within each technique,
+    // prefer whichever instance immediately unlocks a determinable cell.
+    const groups = [
+      findAllPointing(cands),
+      findAllNakedPairs(cands),
+      findAllHiddenPairs(cands),
+      findAllXWing(cands)
+    ];
+
+    for(const group of groups){
+      for(const res of group){
+        const chained = chainToSingle(cands, res);
+        if(chained) return { ...chained, chainFrom: res };
+      }
+    }
+    for(const group of groups){
+      if(group.length>0) return group[0];
+    }
+    return null;
   }
 
-  function describeTechnique(res){
-    const label = res.house ? HOUSE_LABEL[res.house.type] : '';
+  function describeSingle(res){
     switch(res.type){
       case 'naked-single':
         return { title:'ネイキッドシングル', body:`このマスは、他の数字がすべて入っているため、残る候補は${res.value}だけです。` };
       case 'hidden-single-box':
         return { title:'クロスチェック', body:`丸で囲んだ${res.value}が、同じ行・列を通じてこのブロックの他のマスから${res.value}の可能性を消しています。残ったのはオレンジのマスだけです。` };
       case 'hidden-single':
-        return { title:'ヒドゥンシングル', body:`この${label}の中で、${res.value}が入る可能性があるのはオレンジのマスだけです。` };
+        return { title:'ヒドゥンシングル', body:`この${HOUSE_LABEL[res.house.type]}の中で、${res.value}が入る可能性があるのはオレンジのマスだけです。` };
+    }
+    return { title:'', body:'' };
+  }
+
+  function describePattern(res){
+    const label = HOUSE_LABEL[res.house.type];
+    switch(res.type){
       case 'naked-pair':
         return { title:'ネイキッドペア', body:`オレンジの2マスは候補が ${res.values.join('・')} だけの組で共通しています。同じ${label}内の他のマス(枠線のみのマス)からは、この2つの数字を候補から消せます。` };
       case 'hidden-pair':
@@ -862,6 +904,16 @@
         return { title:'X-Wing', body:`${res.values[0]} が2つの${res.orientation==='row'?'行':'列'}で同じ2つの${res.orientation==='row'?'列':'行'}にしか入りません。枠線だけのマスからはこの数字を候補から消せます。` };
     }
     return { title:'', body:'' };
+  }
+
+  function describeTechnique(res){
+    if(res.chainFrom){
+      const cause = describePattern(res.chainFrom);
+      const effect = describeSingle(res);
+      return { title: `${cause.title} → ${effect.title}`, body: `${cause.body} この結果、${effect.body}` };
+    }
+    if(res.targetCell !== undefined) return describeSingle(res);
+    return describePattern(res);
   }
 
   function clearTechHint(){
@@ -906,7 +958,7 @@
     }
     const isPlacement = res.targetCell !== undefined;
     assistState = isPlacement
-      ? { kind:'placement', targetCell: res.targetCell, value: res.value, blockers: res.blockers, houseCells: res.houseCells }
+      ? { kind:'placement', targetCell: res.targetCell, value: res.value, blockers: res.blockers, houseCells: res.houseCells, keyCells: res.chainFrom ? res.chainFrom.cells : [] }
       : { kind:'info', keyCells: res.cells, affected: res.affected };
 
     const desc = describeTechnique(res);
