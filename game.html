@@ -860,11 +860,56 @@
     return next;
   }
 
-  function chainToSingle(cands, res){
-    const reduced = res.type === 'hidden-pair'
+  function applyPatternElimination(cands, res){
+    return res.type === 'hidden-pair'
       ? withRestricted(cands, res.affected, res.values)
       : withEliminated(cands, res.affected, res.values);
-    return findNakedSingle(reduced) || findHiddenSingleBox(reduced) || findHiddenSingleRowCol(reduced);
+  }
+
+  function candidateCount(cands){
+    let n = 0;
+    for(let r=0;r<9;r++) for(let c=0;c<9;c++) if(cands[r][c]) n += cands[r][c].length;
+    return n;
+  }
+
+  // Standard teaching order: pointing pairs/triples are more basic than
+  // naked/hidden pairs, which come before X-Wing.
+  function findPatternGroups(cands){
+    return [
+      findAllPointing(cands),
+      findAllNakedPairs(cands),
+      findAllHiddenPairs(cands),
+      findAllXWing(cands)
+    ];
+  }
+
+  const MAX_ASSIST_CHAIN_DEPTH = 4;
+
+  // Repeatedly applies one narrowing pattern at a time (pointing pair, naked
+  // pair, hidden pair, X-Wing), re-scanning the freshly narrowed candidates
+  // for a newly-unlocked pattern each time, until a naked/hidden single
+  // appears or the depth budget runs out. A single pattern rarely resolves a
+  // cell outright, but two or three chained together very often do - this
+  // mirrors how a person actually works through a stuck board by hand.
+  // Returns { result, chainSteps } (chainSteps = patterns applied, in
+  // order) or null if no single is reached within the budget.
+  function findChainToSingle(cands, depth){
+    const groups = findPatternGroups(cands);
+    for(const group of groups){
+      for(const res of group){
+        const reduced = applyPatternElimination(cands, res);
+        if(candidateCount(reduced) === candidateCount(cands)) continue; // no real progress
+
+        const direct = findNakedSingle(reduced) || findHiddenSingleBox(reduced) || findHiddenSingleRowCol(reduced);
+        if(direct) return { result: direct, chainSteps: [res] };
+
+        if(depth > 1){
+          const deeper = findChainToSingle(reduced, depth - 1);
+          if(deeper) return { result: deeper.result, chainSteps: [res, ...deeper.chainSteps] };
+        }
+      }
+    }
+    return null;
   }
 
   function findAssistStep(){
@@ -872,22 +917,10 @@
     const direct = findNakedSingle(cands) || findHiddenSingleBox(cands) || findHiddenSingleRowCol(cands);
     if(direct) return direct;
 
-    // Standard teaching order: pointing pairs/triples are more basic than
-    // naked/hidden pairs, which come before X-Wing. Within each technique,
-    // prefer whichever instance immediately unlocks a determinable cell.
-    const groups = [
-      findAllPointing(cands),
-      findAllNakedPairs(cands),
-      findAllHiddenPairs(cands),
-      findAllXWing(cands)
-    ];
+    const chained = findChainToSingle(cands, MAX_ASSIST_CHAIN_DEPTH);
+    if(chained) return { ...chained.result, chainSteps: chained.chainSteps };
 
-    for(const group of groups){
-      for(const res of group){
-        const chained = chainToSingle(cands, res);
-        if(chained) return { ...chained, chainFrom: res };
-      }
-    }
+    const groups = findPatternGroups(cands);
     for(const group of groups){
       if(group.length>0) return group[0];
     }
@@ -922,10 +955,12 @@
   }
 
   function describeTechnique(res){
-    if(res.chainFrom){
-      const cause = describePattern(res.chainFrom);
+    if(res.chainSteps && res.chainSteps.length){
+      const causes = res.chainSteps.map(describePattern);
       const effect = describeSingle(res);
-      return { title: `${cause.title} → ${effect.title}`, body: `${cause.body} この結果、${effect.body}` };
+      const title = causes.map(c => c.title).concat(effect.title).join(' → ');
+      const causeBody = causes.map(c => c.body).join(' ');
+      return { title, body: `${causeBody} この結果、${effect.body}` };
     }
     if(res.targetCell !== undefined) return describeSingle(res);
     return describePattern(res);
@@ -973,7 +1008,7 @@
     }
     const isPlacement = res.targetCell !== undefined;
     assistState = isPlacement
-      ? { kind:'placement', targetCell: res.targetCell, value: res.value, blockers: res.blockers, houseCells: res.houseCells, keyCells: res.chainFrom ? res.chainFrom.cells : [] }
+      ? { kind:'placement', targetCell: res.targetCell, value: res.value, blockers: res.blockers, houseCells: res.houseCells, keyCells: res.chainSteps ? res.chainSteps.flatMap(s => s.cells) : [] }
       : { kind:'info', keyCells: res.cells, affected: res.affected };
 
     const desc = describeTechnique(res);
